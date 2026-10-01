@@ -206,7 +206,7 @@ app.post("/api/admin/drivers/:id/reject", auth, admin, (req,res)=>{
 });
 
 app.use(express.static(path.join(__dirname,"public")));
-app.get("*", (req,res)=>res.sendFile(path.join(__dirname,"index.html")));
+app.get("/{*splat}", (req,res)=>res.sendFile(path.join(__dirname,"public","index.html")));
 
 app.use((err,req,res,next)=>{
   console.error(err);
