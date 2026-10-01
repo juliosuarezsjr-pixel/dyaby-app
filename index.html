@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DYABY — Cadastro</title>
+<style>
+body{margin:0;background:#070707;color:#fff;font-family:Arial,sans-serif}.box{max-width:430px;margin:auto;padding:24px}.logo{font-size:46px;font-weight:900;margin:30px 0}.logo span{color:#ffc400}.card{background:#151515;border:1px solid #2b2b2b;border-radius:20px;padding:20px;margin:14px 0}.input{width:100%;box-sizing:border-box;background:#0e0e0e;border:1px solid #333;color:#fff;border-radius:13px;padding:14px;margin:6px 0;font-size:16px}.btn{width:100%;border:0;border-radius:15px;padding:16px;font-weight:800;font-size:17px;margin-top:10px}.primary{background:#ffc400;color:#080808}.dark{background:#242424;color:#fff}.msg{padding:12px;border-radius:12px;margin-top:10px;display:none}.ok{background:#12351e}.err{background:#3a1515}.small{color:#aaa;font-size:13px;line-height:1.4}.hidden{display:none}
+</style></head><body><main class="box">
+<div class="logo">DY<span>ABY</span></div>
+<div class="card">
+<h1>Cadastro</h1><p class="small">Seus dados serão armazenados no servidor do DYABY. A senha é armazenada com hash, não em texto puro.</p>
+<div>
+<button class="btn primary" onclick="role='passenger';render()">👤 Sou Passageiro</button>
+<button class="btn dark" onclick="role='driver';render()">🏍️ Sou Motorista / Entregador</button>
+</div>
+<div id="form"></div>
+<div id="msg" class="msg"></div>
+</div>
+<div class="card"><b>Já tenho conta</b><input id="login" class="input" placeholder="E-mail, CPF ou telefone"><input id="loginPass" class="input" type="password" placeholder="Senha"><button class="btn primary" onclick="login()">Entrar</button></div>
+</main>
+<script>
+let role='passenger';
+const $=id=>document.getElementById(id);
+function render(){
+ $('form').innerHTML=`<input id="name" class="input" placeholder="Nome completo">
+<input id="cpf" class="input" placeholder="CPF">
+<input id="phone" class="input" placeholder="Telefone / WhatsApp">
+<input id="email" class="input" placeholder="E-mail">
+<input id="pass" class="input" type="password" placeholder="Senha (mínimo 8 caracteres)">
+${role==='driver'?`<input id="cnh" class="input" placeholder="CNH">
+<input id="plate" class="input" placeholder="Placa da moto">
+<input id="vehicle" class="input" placeholder="Modelo da moto">
+<p class="small">Depois do cadastro, envie os documentos para análise e aprovação.</p>`:''}
+<button class="btn primary" onclick="register()">Criar minha conta</button>`;
+}
+async function api(url,opt={}){let r=await fetch(url,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});let j=await r.json();if(!r.ok)throw new Error(j.error||'Erro');return j}
+function show(msg,ok=false){$('msg').textContent=msg;$('msg').className='msg '+(ok?'ok':'err');$('msg').style.display='block'}
+async function register(){
+ try{
+  const body={role,name:$('name').value,cpf:$('cpf').value,phone:$('phone').value,email:$('email').value,password:$('pass').value};
+  if(role==='driver')Object.assign(body,{cnh:$('cnh').value,plate:$('plate').value,vehicleModel:$('vehicle').value});
+  const r=await api('/api/auth/register',{method:'POST',body:JSON.stringify(body)});
+  localStorage.setItem('dyaby_token',r.token);show(r.message,true);
+ }catch(e){show(e.message)}
+}
+async function login(){
+ try{const r=await api('/api/auth/login',{method:'POST',body:JSON.stringify({login:$('login').value,password:$('loginPass').value})});localStorage.setItem('dyaby_token',r.token);show('Login realizado: '+r.user.name,true)}
+ catch(e){show(e.message)}
+}
+render();
+</script></body></html>
