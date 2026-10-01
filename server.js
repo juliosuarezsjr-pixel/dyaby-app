@@ -205,9 +205,8 @@ app.post("/api/admin/drivers/:id/reject", auth, admin, (req,res)=>{
   res.json({ok:true,message:"Cadastro rejeitado."});
 });
 
-app.use(express.static(path.join(__dirname,"public")));
-app.get("/{*splat}", (req,res)=>res.sendFile(path.join(__dirname,"public","index.html")));
-
+app.use(express.static(__dirname));
+app.get("/*splat", (req,res)=>res.sendFile(path.join(__dirname,"index.html")));
 app.use((err,req,res,next)=>{
   console.error(err);
   res.status(400).json({error:err.message || "Erro na requisição."});
