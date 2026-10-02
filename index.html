@@ -3,9 +3,9 @@
 <div class="top"><div><div class="logo">DYABY</div><div class="sub">Mobilidade que aproxima.</div></div><span id="rolePill" class="pill hidden"></span></div>
 <section id="auth">
 <div class="card"><h2>Criar conta</h2><div class="row"><button class="btn primary" onclick="setRole('passenger')">👤 Passageiro</button><button class="btn dark" onclick="setRole('driver')">🏍️ Motorista / Entregador</button></div><div id="regForm"></div><div id="regMsg" class="msg"></div></div>
-<div class="card"><h2>Já tenho conta</h2><input id="login" class="input" placeholder="E-mail, CPF ou telefone"><input id="loginPass" class="input" type="password" placeholder="Senha"><button class="btn primary" onclick="login()">Entrar</button><div id="loginMsg" class="msg"></div></div>
+<div class="card"><h2>Já tenho conta</h2><input id="login" class="input" placeholder="E-mail, CPF ou telefone"><input id="loginPass" class="input" type="password" placeholder="Senha"><button class="btn primary" onclick="login()">Entrar</button><div id="loginMsg" class="msg"></div><button class="btn dark" onclick="testDriverLogin()">🧪 Entrar como motorista de teste</button><button class="btn dark" onclick="showAdminLogin()">🔐 Área administrativa</button></div>
 </section>
-<section id="app" class="hidden"></section>
+<section id="app" class="hidden"></section><section id="admin" class="hidden"></section>
 </main><script>
 let role='passenger', token=localStorage.getItem('dyaby_token')||'', me=null, activeRide=null, watch=null;
 const $=id=>document.getElementById(id);
@@ -14,9 +14,31 @@ function renderReg(){ $('regForm').innerHTML=`<input id="name" class="input" pla
 async function api(url,opt={}){const headers={'Content-Type':'application/json',...(opt.headers||{})};if(token)headers.Authorization='Bearer '+token;const r=await fetch(url,{...opt,headers});let j={};try{j=await r.json()}catch{}if(!r.ok)throw new Error(j.error||'Erro');return j}
 function msg(id,t,ok=false){$(id).textContent=t;$(id).className='msg '+(ok?'ok':'err')}
 async function register(){try{const b={role,name:$('name').value,cpf:$('cpf').value,phone:$('phone').value,email:$('email').value,password:$('pass').value};if(role==='driver')Object.assign(b,{cnh:$('cnh').value,plate:$('plate').value,vehicleModel:$('vehicle').value});const r=await api('/api/auth/register',{method:'POST',body:JSON.stringify(b)});if(role==='driver'){msg('regMsg',r.message,true)}else{token=r.token;localStorage.setItem('dyaby_token',token);await loadMe()}}catch(e){msg('regMsg',e.message)}}
+async function testDriverLogin(){try{const r=await api('/api/test/driver-login',{method:'POST',body:'{}'});token=r.token;localStorage.setItem('dyaby_token',token);await loadMe();alert('Motorista de teste ativado. Use somente para o teste da corrida.')}catch(e){msg('loginMsg',e.message)}}
 async function login(){try{const r=await api('/api/auth/login',{method:'POST',body:JSON.stringify({login:$('login').value,password:$('loginPass').value})});token=r.token;localStorage.setItem('dyaby_token',token);await loadMe()}catch(e){msg('loginMsg',e.message)}}
 async function loadMe(){try{const r=await api('/api/me');me=r.user;activeRide=null;showApp()}catch(e){token='';localStorage.removeItem('dyaby_token');msg('loginMsg',e.message)}}
-function logout(){token='';me=null;localStorage.removeItem('dyaby_token');$('app').classList.add('hidden');$('auth').classList.remove('hidden')}
+function logout(){token='';me=null;localStorage.removeItem('dyaby_token');$('app').classList.add('hidden');$('admin').classList.add('hidden');$('auth').classList.remove('hidden')}
+function showAdminLogin(){
+ $('auth').classList.add('hidden');$('app').classList.add('hidden');$('admin').classList.remove('hidden');
+ $('admin').innerHTML='<div class="card"><h2>🔐 Administração DYABY</h2><div class="small">Acesso exclusivo do administrador.</div><input id="adminEmail" class="input" type="email" placeholder="E-mail administrativo"><input id="adminPass" class="input" type="password" placeholder="Senha administrativa"><button class="btn primary" onclick="adminLogin()">Entrar no painel</button><button class="btn dark" onclick="backToAuth()">Voltar</button><div id="adminMsg" class="msg"></div></div>';
+}
+function backToAuth(){$('admin').classList.add('hidden');$('auth').classList.remove('hidden')}
+async function adminLogin(){
+ try{const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:$('adminEmail').value,password:$('adminPass').value})});const j=await r.json();if(!r.ok)throw new Error(j.error||'Erro no acesso administrativo.');token=j.token;localStorage.setItem('dyaby_token',token);renderAdmin()}catch(e){msg('adminMsg',e.message)}
+}
+async function renderAdmin(){
+ $('auth').classList.add('hidden');$('app').classList.add('hidden');$('admin').classList.remove('hidden');
+ $('admin').innerHTML='<div class="card"><div class="top"><div><h2>🔐 Painel DYABY</h2><div class="small">Aprovação de motoristas</div></div><span class="pill">ADMIN</span></div><div id="adminList" class="small">Carregando...</div><button class="btn dark" onclick="adminLogout()">Sair do painel</button></div>';
+ await loadAdminDrivers();
+}
+async function loadAdminDrivers(){
+ try{const r=await api('/api/admin/drivers');const list=$('adminList');if(!r.drivers.length){list.innerHTML='<div class="ride">Nenhum motorista cadastrado.</div>';return}
+ list.innerHTML=r.drivers.map(d=>'<div class="ride"><div class="big">'+esc(d.name)+'</div><div>CPF: '+esc(d.cpf)+'</div><div>Telefone: '+esc(d.phone)+'</div><div>CNH: '+esc(d.cnh||'-')+'</div><div>Moto: '+esc(d.vehicle_model||'-')+' · Placa: '+esc(d.plate||'-')+'</div><div class="status">Status: '+esc(d.status)+'</div>'+(d.status==='pending'?'<div class="row"><button class="btn green" onclick="approveDriver('+d.id+')">Aprovar</button><button class="btn red" onclick="rejectDriver('+d.id+')">Rejeitar</button></div>':d.status==='approved'?'<div class="small">🟢 Motorista aprovado.</div>':'<div class="small">Cadastro rejeitado.</div>')+'</div>').join('');
+ }catch(e){$('adminList').innerHTML='<div class="msg err" style="display:block">'+esc(e.message)+'</div>'}
+}
+async function approveDriver(id){try{const r=await api('/api/admin/drivers/'+id+'/approve',{method:'POST'});alert(r.message||'Motorista aprovado.');await loadAdminDrivers()}catch(e){alert(e.message)}}
+async function rejectDriver(id){try{const r=await api('/api/admin/drivers/'+id+'/reject',{method:'POST'});alert(r.message||'Cadastro rejeitado.');await loadAdminDrivers()}catch(e){alert(e.message)}}
+function adminLogout(){logout()}
 function showApp(){ $('auth').classList.add('hidden');$('app').classList.remove('hidden');$('rolePill').classList.remove('hidden');$('rolePill').textContent=me.role==='driver'?'🏍️ Motorista':'👤 Passageiro'; if(me.role==='driver')driverHome();else passengerHome();}
 function passengerHome(){ $('app').innerHTML=`<div class="card"><div class="small">Olá,</div><div class="big">${esc(me.name)} 👋</div><div class="sub">Patos de Minas</div></div><div id="passengerPanel" class="card"><h2>🏍️ Pedir corrida</h2><input id="dest" class="input" placeholder="Para onde vamos?"><input id="fare" class="input" type="number" step="0.01" placeholder="Valor da corrida (R$)"><button class="btn primary" onclick="requestRide()">Pedir agora</button><div id="rideMsg" class="msg"></div></div><div class="card"><button class="btn dark" onclick="logout()">Sair</button></div>`;findMyRide();}
 async function requestRide(){try{if(!navigator.geolocation)throw new Error('Seu celular não disponibilizou localização.');navigator.geolocation.getCurrentPosition(async p=>{try{const r=await api('/api/rides',{method:'POST',body:JSON.stringify({destination:$('dest').value,pickupLat:p.coords.latitude,pickupLng:p.coords.longitude,fare:Number($('fare').value||0)})});activeRide=r.ride;renderPassengerRide()}catch(e){msg('rideMsg',e.message)}},()=>msg('rideMsg','Permita a localização do celular para pedir a corrida.'),{enableHighAccuracy:true,timeout:10000})}catch(e){msg('rideMsg',e.message)}}
@@ -34,5 +56,5 @@ async function rideAction(action){try{const r=await api('/api/rides/'+activeRide
 async function driverCancel(){try{const r=await api('/api/rides/'+activeRide.id+'/cancel',{method:'POST',body:JSON.stringify({reason:'Cancelamento pelo motorista'})});activeRide=r.ride;driverHome()}catch(e){alert(e.message)}}
 function statusText(s){return ({requested:'Procurando motorista',accepted:'Motorista aceitou',arrived:'Motorista chegou',started:'Corrida em andamento',finished:'Corrida finalizada',cancelled:'Corrida cancelada'})[s]||s}
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-renderReg();if(token)loadMe();
+renderReg();if(token){try{const payload=JSON.parse(atob(token.split(".")[1]));if(payload.role==="admin")renderAdmin();else loadMe()}catch{loadMe()}}
 </script></body></html>

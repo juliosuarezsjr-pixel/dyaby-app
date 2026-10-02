@@ -164,6 +164,29 @@ app.post("/api/auth/register", async (req,res)=>{
   });
 });
 
+// ===== TEMPORÁRIO: motorista de teste =====
+// Usar somente durante os testes antes da publicação. Remover antes de produção.
+app.post("/api/test/driver-login", async (req,res)=>{
+  const email = "motorista.teste@dyaby.local";
+  const phone = "5511999990000";
+  const cpf = "TEST-DRIVER-001";
+  let user = db.prepare("SELECT * FROM users WHERE email=?").get(email);
+  if (!user) {
+    const hash = await bcrypt.hash("DyabyTeste2026!", 10);
+    const info = db.prepare(`INSERT INTO users(role,name,cpf,phone,email,password_hash,status,phone_verified,email_verified)
+      VALUES('driver','Motorista de Teste',?,?,?,?,1,1)`).run(cpf,phone,email,hash);
+    db.prepare("INSERT INTO driver_profiles(user_id,cnh,plate,vehicle_model,approved_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)")
+      .run(info.lastInsertRowid,"TEST-CNH","TEST-0001","Yamaha R15 V3");
+    user = db.prepare("SELECT * FROM users WHERE id=?").get(info.lastInsertRowid);
+  } else if (user.status !== "approved") {
+    db.prepare("UPDATE users SET status='approved' WHERE id=?").run(user.id);
+    db.prepare("UPDATE driver_profiles SET approved_at=COALESCE(approved_at,CURRENT_TIMESTAMP) WHERE user_id=?").run(user.id);
+    user = db.prepare("SELECT * FROM users WHERE id=?").get(user.id);
+  }
+  const safe={id:user.id,role:user.role,name:user.name,cpf:user.cpf,phone:user.phone,email:user.email,status:user.status};
+  res.json({user:safe,token:tokenFor(safe),temporary:true,message:"Motorista de teste ativado. Remova o modo de teste antes da publicação."});
+});
+
 app.post("/api/auth/login", async (req,res)=>{
   const login = clean(req.body.login).toLowerCase();
   const password = String(req.body.password || "");
