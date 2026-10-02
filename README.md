@@ -1,15 +1,19 @@
-# DYABY — atualização de cancelamento
+# DYABY — banco persistente PostgreSQL
 
-Esta versão adiciona a regra de compensação de cancelamento ao fluxo real de corridas.
+Esta atualização troca o SQLite local pelo PostgreSQL do Render para evitar que os cadastros desapareçam após redeploy/restart.
 
-## Regra
-- O relógio começa quando o motorista inicia a corrida (`started`).
-- Se o passageiro cancelar antes de 3 minutos: sem compensação automática.
-- Se cancelar a partir de 3 minutos: R$ 5,00 de compensação registrada para o motorista.
-- Cancelamentos por emergência, acidente ou segurança não recebem compensação automática e podem ser analisados.
-- A compensação é gravada na corrida no campo `driver_compensation` e aparece para passageiro e motorista.
+## Arquivos
+- `server.js` — backend com PostgreSQL
+- `package.json` — dependências atualizadas
 
-## Deploy
-Substitua os arquivos `server.js`, `index.html` e `package.json` no repositório conectado ao Render e faça um novo deploy.
+## Render
+1. Crie/conecte um PostgreSQL ao serviço `dyaby-app`.
+2. Em Environment, adicione `DATABASE_URL` usando a Internal Database URL do PostgreSQL.
+3. Mantenha `JWT_SECRET`, `ADMIN_EMAIL` e `ADMIN_PASSWORD` configurados com valores fortes.
+4. Faça deploy pelo GitHub.
+5. Abra `/api/health`. Deve retornar `"database":"postgresql"`.
 
-> Observação: esta versão ainda usa SQLite local. Para produção no Render, migrar para PostgreSQL antes de considerar os dados permanentes.
+## Importante
+A base PostgreSQL começa vazia. Os usuários que existiam somente no SQLite antigo não são copiados automaticamente. Depois de configurar o PostgreSQL, faça um novo cadastro de teste e confirme que ele continua funcionando após um novo deploy/restart.
+
+Os uploads ainda ficam no filesystem local; para documentos de motorista em produção, use armazenamento persistente/objeto (ex.: S3/R2/Supabase Storage) em uma etapa posterior.
