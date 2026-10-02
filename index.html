@@ -1,49 +1,38 @@
-<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DYABY — Cadastro</title>
-<style>
-body{margin:0;background:#070707;color:#fff;font-family:Arial,sans-serif}.box{max-width:430px;margin:auto;padding:24px}.logo{font-size:46px;font-weight:900;margin:30px 0}.logo span{color:#ffc400}.card{background:#151515;border:1px solid #2b2b2b;border-radius:20px;padding:20px;margin:14px 0}.input{width:100%;box-sizing:border-box;background:#0e0e0e;border:1px solid #333;color:#fff;border-radius:13px;padding:14px;margin:6px 0;font-size:16px}.btn{width:100%;border:0;border-radius:15px;padding:16px;font-weight:800;font-size:17px;margin-top:10px}.primary{background:#ffc400;color:#080808}.dark{background:#242424;color:#fff}.msg{padding:12px;border-radius:12px;margin-top:10px;display:none}.ok{background:#12351e}.err{background:#3a1515}.small{color:#aaa;font-size:13px;line-height:1.4}.hidden{display:none}
-</style></head><body><main class="box">
-<div class="logo">DY<span>ABY</span></div>
-<div class="card">
-<h1>Cadastro</h1><p class="small">Seus dados serão armazenados no servidor do DYABY. A senha é armazenada com hash, não em texto puro.</p>
-<div>
-<button class="btn primary" onclick="role='passenger';render()">👤 Sou Passageiro</button>
-<button class="btn dark" onclick="role='driver';render()">🏍️ Sou Motorista / Entregador</button>
-</div>
-<div id="form"></div>
-<div id="msg" class="msg"></div>
-</div>
-<div class="card"><b>Já tenho conta</b><input id="login" class="input" placeholder="E-mail, CPF ou telefone"><input id="loginPass" class="input" type="password" placeholder="Senha"><button class="btn primary" onclick="login()">Entrar</button></div>
-</main>
-<script>
-let role='passenger';
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DYABY</title><style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#0b0b0b;color:#fff}main{max-width:520px;margin:auto;padding:20px}.card{background:#151515;border:1px solid #2d2d2d;border-radius:18px;padding:18px;margin:14px 0}.logo{font-size:36px;font-weight:900;color:#ffd21a}.sub{color:#aaa}.input{width:100%;padding:14px;margin:7px 0;border-radius:12px;border:1px solid #444;background:#0f0f0f;color:#fff;font-size:16px}.btn{width:100%;padding:14px;border:0;border-radius:12px;margin-top:8px;font-size:16px;font-weight:700;cursor:pointer}.primary{background:#ffd21a;color:#111}.dark{background:#292929;color:#fff}.green{background:#20c46b;color:#07150d}.red{background:#e84b4b;color:white}.msg{padding:12px;border-radius:10px;margin-top:10px;display:none}.ok{display:block;background:#173d28}.err{display:block;background:#4b1d1d}.row{display:flex;gap:8px}.row>*{flex:1}.pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#292929;color:#ddd}.ride{border:1px solid #444;border-radius:14px;padding:14px;margin:10px 0}.big{font-size:25px;font-weight:800}.small{font-size:13px;color:#aaa}.top{display:flex;justify-content:space-between;align-items:center}.status{color:#ffd21a;font-weight:700}.hidden{display:none}</style></head><body><main>
+<div class="top"><div><div class="logo">DYABY</div><div class="sub">Mobilidade que aproxima.</div></div><span id="rolePill" class="pill hidden"></span></div>
+<section id="auth">
+<div class="card"><h2>Criar conta</h2><div class="row"><button class="btn primary" onclick="setRole('passenger')">👤 Passageiro</button><button class="btn dark" onclick="setRole('driver')">🏍️ Motorista / Entregador</button></div><div id="regForm"></div><div id="regMsg" class="msg"></div></div>
+<div class="card"><h2>Já tenho conta</h2><input id="login" class="input" placeholder="E-mail, CPF ou telefone"><input id="loginPass" class="input" type="password" placeholder="Senha"><button class="btn primary" onclick="login()">Entrar</button><div id="loginMsg" class="msg"></div></div>
+</section>
+<section id="app" class="hidden"></section>
+</main><script>
+let role='passenger', token=localStorage.getItem('dyaby_token')||'', me=null, activeRide=null, watch=null;
 const $=id=>document.getElementById(id);
-function render(){
- $('form').innerHTML=`<input id="name" class="input" placeholder="Nome completo">
-<input id="cpf" class="input" placeholder="CPF">
-<input id="phone" class="input" placeholder="Telefone / WhatsApp">
-<input id="email" class="input" placeholder="E-mail">
-<input id="pass" class="input" type="password" placeholder="Senha (mínimo 8 caracteres)">
-${role==='driver'?`<input id="cnh" class="input" placeholder="CNH">
-<input id="plate" class="input" placeholder="Placa da moto">
-<input id="vehicle" class="input" placeholder="Modelo da moto">
-<p class="small">Depois do cadastro, envie os documentos para análise e aprovação.</p>`:''}
-<button class="btn primary" onclick="register()">Criar minha conta</button>`;
-}
-async function api(url,opt={}){let r=await fetch(url,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});let j=await r.json();if(!r.ok)throw new Error(j.error||'Erro');return j}
-function show(msg,ok=false){$('msg').textContent=msg;$('msg').className='msg '+(ok?'ok':'err');$('msg').style.display='block'}
-async function register(){
- try{
-  const body={role,name:$('name').value,cpf:$('cpf').value,phone:$('phone').value,email:$('email').value,password:$('pass').value};
-  if(role==='driver')Object.assign(body,{cnh:$('cnh').value,plate:$('plate').value,vehicleModel:$('vehicle').value});
-  const r=await api('/api/auth/register',{method:'POST',body:JSON.stringify(body)});
-  localStorage.setItem('dyaby_token',r.token);show(r.message,true);
- }catch(e){show(e.message)}
-}
-async function login(){
- try{const r=await api('/api/auth/login',{method:'POST',body:JSON.stringify({login:$('login').value,password:$('loginPass').value})});localStorage.setItem('dyaby_token',r.token);show('Login realizado: '+r.user.name,true)}
- catch(e){show(e.message)}
-}
-render();
+function setRole(r){role=r;renderReg()}
+function renderReg(){ $('regForm').innerHTML=`<input id="name" class="input" placeholder="Nome completo"><input id="cpf" class="input" placeholder="CPF"><input id="phone" class="input" placeholder="Telefone / WhatsApp"><input id="email" class="input" placeholder="E-mail"><input id="pass" class="input" type="password" placeholder="Senha (mínimo 8 caracteres)">${role==='driver'?`<input id="cnh" class="input" placeholder="CNH"><input id="plate" class="input" placeholder="Placa da moto"><input id="vehicle" class="input" placeholder="Modelo da moto"><div class="small">A verificação do WhatsApp e a análise dos documentos entram nesta etapa do cadastro do motorista.</div>`:''}<button class="btn primary" onclick="register()">Criar minha conta</button>`}
+async function api(url,opt={}){const headers={'Content-Type':'application/json',...(opt.headers||{})};if(token)headers.Authorization='Bearer '+token;const r=await fetch(url,{...opt,headers});let j={};try{j=await r.json()}catch{}if(!r.ok)throw new Error(j.error||'Erro');return j}
+function msg(id,t,ok=false){$(id).textContent=t;$(id).className='msg '+(ok?'ok':'err')}
+async function register(){try{const b={role,name:$('name').value,cpf:$('cpf').value,phone:$('phone').value,email:$('email').value,password:$('pass').value};if(role==='driver')Object.assign(b,{cnh:$('cnh').value,plate:$('plate').value,vehicleModel:$('vehicle').value});const r=await api('/api/auth/register',{method:'POST',body:JSON.stringify(b)});if(role==='driver'){msg('regMsg',r.message,true)}else{token=r.token;localStorage.setItem('dyaby_token',token);await loadMe()}}catch(e){msg('regMsg',e.message)}}
+async function login(){try{const r=await api('/api/auth/login',{method:'POST',body:JSON.stringify({login:$('login').value,password:$('loginPass').value})});token=r.token;localStorage.setItem('dyaby_token',token);await loadMe()}catch(e){msg('loginMsg',e.message)}}
+async function loadMe(){try{const r=await api('/api/me');me=r.user;activeRide=null;showApp()}catch(e){token='';localStorage.removeItem('dyaby_token');msg('loginMsg',e.message)}}
+function logout(){token='';me=null;localStorage.removeItem('dyaby_token');$('app').classList.add('hidden');$('auth').classList.remove('hidden')}
+function showApp(){ $('auth').classList.add('hidden');$('app').classList.remove('hidden');$('rolePill').classList.remove('hidden');$('rolePill').textContent=me.role==='driver'?'🏍️ Motorista':'👤 Passageiro'; if(me.role==='driver')driverHome();else passengerHome();}
+function passengerHome(){ $('app').innerHTML=`<div class="card"><div class="small">Olá,</div><div class="big">${esc(me.name)} 👋</div><div class="sub">Patos de Minas</div></div><div id="passengerPanel" class="card"><h2>🏍️ Pedir corrida</h2><input id="dest" class="input" placeholder="Para onde vamos?"><input id="fare" class="input" type="number" step="0.01" placeholder="Valor da corrida (R$)"><button class="btn primary" onclick="requestRide()">Pedir agora</button><div id="rideMsg" class="msg"></div></div><div class="card"><button class="btn dark" onclick="logout()">Sair</button></div>`;findMyRide();}
+async function requestRide(){try{if(!navigator.geolocation)throw new Error('Seu celular não disponibilizou localização.');navigator.geolocation.getCurrentPosition(async p=>{try{const r=await api('/api/rides',{method:'POST',body:JSON.stringify({destination:$('dest').value,pickupLat:p.coords.latitude,pickupLng:p.coords.longitude,fare:Number($('fare').value||0)})});activeRide=r.ride;renderPassengerRide()}catch(e){msg('rideMsg',e.message)}},()=>msg('rideMsg','Permita a localização do celular para pedir a corrida.'),{enableHighAccuracy:true,timeout:10000})}catch(e){msg('rideMsg',e.message)}}
+async function findMyRide(){try{const r=await api('/api/rides/0');}catch(e){} /* estado é recuperado pelo polling quando o ID existir */}
+async function renderPassengerRide(){if(!activeRide)return;const r=await api('/api/rides/'+activeRide.id);activeRide=r.ride;$('passengerPanel').innerHTML=`<h2>🏍️ Sua corrida</h2><div class="ride"><div>Destino: <b>${esc(activeRide.destination)}</b></div><div class="status">Status: ${statusText(activeRide.status)}</div>${activeRide.driver_name?`<div>Motorista: <b>${esc(activeRide.driver_name)}</b></div><div>Telefone: ${esc(activeRide.driver_phone||'')}</div>`:''}${activeRide.driver_compensation?`<div>Compensação ao motorista: R$ ${Number(activeRide.driver_compensation).toFixed(2)}</div>`:''}</div>${['requested','accepted','arrived','started'].includes(activeRide.status)?`<button class="btn red" onclick="cancelRide()">Cancelar corrida</button>`:''}<div class="small">Esta tela atualiza automaticamente.</div>`;}
+async function cancelRide(){try{const r=await api('/api/rides/'+activeRide.id+'/cancel',{method:'POST',body:JSON.stringify({reason:'Cancelamento pelo passageiro'})});activeRide=r.ride;renderPassengerRide()}catch(e){alert(e.message)}}
+function driverHome(){ $('app').innerHTML=`<div class="card"><div class="small">Olá,</div><div class="big">${esc(me.name)} 👋</div><div class="sub">Motorista / Entregador</div><div id="driverStatus" class="status">Offline</div><button id="onlineBtn" class="btn primary" onclick="toggleOnline()">Ficar online</button></div><div id="driverPanel" class="card"><h2>📍 Corridas disponíveis</h2><div class="small">Fique online para receber solicitações.</div><div id="available"></div></div><div class="card"><button class="btn dark" onclick="logout()">Sair</button></div>`;pollAvailable();}
+let online=false;
+function getPos(){return new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(p=>resolve(p.coords),e=>reject(e),{enableHighAccuracy:true,timeout:10000}))}
+async function toggleOnline(){try{if(!online){const p=await getPos();await api('/api/driver/presence',{method:'POST',body:JSON.stringify({online:true,lat:p.latitude,lng:p.longitude})});online=true;$('driverStatus').textContent='🟢 Online';$('onlineBtn').textContent='Ficar offline';$('onlineBtn').className='btn red';if(watch===null)watch=navigator.geolocation.watchPosition(p=>api('/api/driver/location',{method:'POST',body:JSON.stringify({lat:p.coords.latitude,lng:p.coords.longitude})}).catch(()=>{}));}else{await api('/api/driver/presence',{method:'POST',body:JSON.stringify({online:false})});online=false;$('driverStatus').textContent='Offline';$('onlineBtn').textContent='Ficar online';$('onlineBtn').className='btn primary';}}catch(e){alert(e.message)}}
+async function pollAvailable(){if(!me||me.role!=='driver')return;try{const r=await api('/api/rides/available');$('available').innerHTML=r.rides.length?r.rides.map(x=>`<div class="ride"><div class="big">R$ ${Number(x.fare).toFixed(2)}</div><div>Passageiro: <b>${esc(x.passenger_name)}</b></div><div>Destino: <b>${esc(x.destination)}</b></div><div class="small">Solicitada: ${new Date(x.requested_at.replace(' ','T')+'Z').toLocaleTimeString('pt-BR')}</div><button class="btn green" onclick="acceptRide(${x.id})">Aceitar corrida</button></div>`).join(''):'<div class="small">Nenhuma corrida disponível agora.</div>'}catch(e){}setTimeout(pollAvailable,3000)}
+async function acceptRide(id){try{const r=await api('/api/rides/'+id+'/accept',{method:'POST'});activeRide=r.ride;driverRidePanel()}catch(e){alert(e.message)}}
+async function driverRidePanel(){const r=await api('/api/rides/'+activeRide.id);activeRide=r.ride;$('driverPanel').innerHTML=`<h2>🏍️ Corrida ${activeRide.id}</h2><div class="ride"><div>Passageiro: <b>${esc(activeRide.passenger_name)}</b></div><div>Destino: <b>${esc(activeRide.destination)}</b></div><div class="status">${statusText(activeRide.status)}</div>${activeRide.passenger_phone?`<div>Telefone: ${esc(activeRide.passenger_phone)}</div>`:''}</div>${activeRide.status==='accepted'?`<button class="btn primary" onclick="rideAction('arrive')">Cheguei no local</button>`:''}${activeRide.status==='arrived'?`<button class="btn green" onclick="rideAction('start')">Iniciar corrida</button>`:''}${activeRide.status==='started'?`<button class="btn green" onclick="rideAction('finish')">Finalizar corrida</button>`:''}${['accepted','arrived','started'].includes(activeRide.status)?`<button class="btn red" onclick="driverCancel()">Cancelar</button>`:''}<div class="small">A tela atualiza automaticamente.</div>`;setTimeout(async()=>{if(activeRide){try{const x=await api('/api/rides/'+activeRide.id);activeRide=x.ride;if(['finished','cancelled'].includes(activeRide.status))driverRidePanel();else driverRidePanel()}catch{}}},4000)}
+async function rideAction(action){try{const r=await api('/api/rides/'+activeRide.id+'/'+action,{method:'POST'});activeRide=r.ride;driverRidePanel()}catch(e){alert(e.message)}}
+async function driverCancel(){try{const r=await api('/api/rides/'+activeRide.id+'/cancel',{method:'POST',body:JSON.stringify({reason:'Cancelamento pelo motorista'})});activeRide=r.ride;driverHome()}catch(e){alert(e.message)}}
+function statusText(s){return ({requested:'Procurando motorista',accepted:'Motorista aceitou',arrived:'Motorista chegou',started:'Corrida em andamento',finished:'Corrida finalizada',cancelled:'Corrida cancelada'})[s]||s}
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+renderReg();if(token)loadMe();
 </script></body></html>

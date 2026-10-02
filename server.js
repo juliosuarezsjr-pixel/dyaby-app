@@ -57,6 +57,38 @@ CREATE TABLE IF NOT EXISTS driver_profiles (
 );
 `);
 
+// ===== DYABY: fluxo real de corridas =====
+db.exec(`
+CREATE TABLE IF NOT EXISTS driver_presence (
+  driver_id INTEGER PRIMARY KEY,
+  online INTEGER NOT NULL DEFAULT 0,
+  lat REAL,
+  lng REAL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(driver_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS rides (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  passenger_id INTEGER NOT NULL,
+  driver_id INTEGER,
+  service TEXT NOT NULL DEFAULT 'passenger',
+  status TEXT NOT NULL DEFAULT 'requested',
+  pickup_lat REAL, pickup_lng REAL,
+  destination TEXT NOT NULL,
+  destination_lat REAL, destination_lng REAL,
+  fare REAL NOT NULL DEFAULT 0,
+  driver_compensation REAL NOT NULL DEFAULT 0,
+  requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  accepted_at TEXT, arrived_at TEXT, started_at TEXT, finished_at TEXT, cancelled_at TEXT,
+  cancelled_by TEXT, cancel_reason TEXT,
+  FOREIGN KEY(passenger_id) REFERENCES users(id),
+  FOREIGN KEY(driver_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_rides_status ON rides(status);
+CREATE INDEX IF NOT EXISTS idx_rides_passenger ON rides(passenger_id);
+CREATE INDEX IF NOT EXISTS idx_rides_driver ON rides(driver_id);
+`);
+
 function clean(v) { return String(v ?? "").trim(); }
 function onlyDigits(v) { return clean(v).replace(/\D/g, ""); }
 
@@ -177,6 +209,102 @@ app.post("/api/driver/documents", auth, upload.single("document"), (req,res)=>{
   res.json({ok:true,message:"Documento recebido para análise."});
 });
 
+// Motorista fica online/offline e envia a localização atual.
+app.post("/api/driver/presence", auth, (req,res)=>{
+  if (req.auth.role !== "driver") return res.status(403).json({error:"Somente motoristas."});
+  const u = db.prepare("SELECT status FROM users WHERE id=?").get(req.auth.sub);
+  if (!u || u.status !== "approved") return res.status(403).json({error:"Motorista ainda não aprovado."});
+  const online = req.body.online ? 1 : 0;
+  const lat = Number(req.body.lat), lng = Number(req.body.lng);
+  if (online && (!Number.isFinite(lat) || !Number.isFinite(lng))) return res.status(400).json({error:"Localização necessária para ficar online."});
+  db.prepare(`INSERT INTO driver_presence(driver_id,online,lat,lng,updated_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)
+    ON CONFLICT(driver_id) DO UPDATE SET online=excluded.online,lat=excluded.lat,lng=excluded.lng,updated_at=CURRENT_TIMESTAMP`)
+    .run(req.auth.sub,online,Number.isFinite(lat)?lat:null,Number.isFinite(lng)?lng:null);
+  res.json({ok:true,online:!!online});
+});
+
+app.post("/api/driver/location", auth, (req,res)=>{
+  if (req.auth.role !== "driver") return res.status(403).json({error:"Somente motoristas."});
+  const lat=Number(req.body.lat), lng=Number(req.body.lng);
+  if (!Number.isFinite(lat)||!Number.isFinite(lng)) return res.status(400).json({error:"Localização inválida."});
+  db.prepare("UPDATE driver_presence SET lat=?,lng=?,updated_at=CURRENT_TIMESTAMP WHERE driver_id=? AND online=1").run(lat,lng,req.auth.sub);
+  res.json({ok:true});
+});
+
+app.post("/api/rides", auth, (req,res)=>{
+  if (req.auth.role !== "passenger") return res.status(403).json({error:"Somente passageiros podem pedir corrida."});
+  const destination=clean(req.body.destination);
+  const lat=Number(req.body.pickupLat), lng=Number(req.body.pickupLng);
+  const fare=Math.max(0,Number(req.body.fare)||0);
+  if (destination.length<2) return res.status(400).json({error:"Informe o destino."});
+  if (!Number.isFinite(lat)||!Number.isFinite(lng)) return res.status(400).json({error:"Permita a localização do celular para pedir a corrida."});
+  const active=db.prepare("SELECT id FROM rides WHERE passenger_id=? AND status IN ('requested','accepted','arrived','started') LIMIT 1").get(req.auth.sub);
+  if (active) return res.status(409).json({error:"Você já possui uma corrida em andamento.",rideId:active.id});
+  const info=db.prepare(`INSERT INTO rides(passenger_id,service,status,pickup_lat,pickup_lng,destination,fare) VALUES(?,?,?,?,?,?,?)`).run(req.auth.sub,'passenger','requested',lat,lng,destination,fare);
+  const ride=db.prepare(`SELECT r.*,u.name passenger_name FROM rides r JOIN users u ON u.id=r.passenger_id WHERE r.id=?`).get(info.lastInsertRowid);
+  res.status(201).json({ride});
+});
+
+app.get("/api/rides/available", auth, (req,res)=>{
+  if (req.auth.role !== "driver") return res.status(403).json({error:"Somente motoristas."});
+  const u=db.prepare("SELECT status FROM users WHERE id=?").get(req.auth.sub);
+  if (!u || u.status !== "approved") return res.status(403).json({error:"Motorista ainda não aprovado."});
+  const rows=db.prepare(`SELECT r.id,r.destination,r.fare,r.pickup_lat,r.pickup_lng,r.requested_at,u.name passenger_name
+    FROM rides r JOIN users u ON u.id=r.passenger_id WHERE r.status='requested' ORDER BY r.requested_at ASC LIMIT 20`).all();
+  res.json({rides:rows});
+});
+
+app.get("/api/rides/:id", auth, (req,res)=>{
+  const ride=db.prepare(`SELECT r.*,p.name passenger_name,p.phone passenger_phone,d.name driver_name,d.phone driver_phone
+    FROM rides r JOIN users p ON p.id=r.passenger_id LEFT JOIN users d ON d.id=r.driver_id WHERE r.id=?`).get(req.params.id);
+  if (!ride) return res.status(404).json({error:"Corrida não encontrada."});
+  if (ride.passenger_id!==req.auth.sub && ride.driver_id!==req.auth.sub && req.auth.role!=="admin") return res.status(403).json({error:"Acesso negado."});
+  res.json({ride});
+});
+
+app.post("/api/rides/:id/accept", auth, (req,res)=>{
+  if (req.auth.role !== "driver") return res.status(403).json({error:"Somente motoristas."});
+  const tx=db.transaction(()=>{
+    const u=db.prepare("SELECT status FROM users WHERE id=?").get(req.auth.sub);
+    if (!u || u.status!=="approved") throw new Error("Motorista ainda não aprovado.");
+    const r=db.prepare("SELECT * FROM rides WHERE id=?").get(req.params.id);
+    if (!r) throw new Error("Corrida não encontrada.");
+    if (r.status!=="requested") throw new Error("Essa corrida já foi aceita ou não está disponível.");
+    db.prepare("UPDATE rides SET driver_id=?,status='accepted',accepted_at=CURRENT_TIMESTAMP WHERE id=? AND status='requested'").run(req.auth.sub,req.params.id);
+    return db.prepare(`SELECT r.*,p.name passenger_name,p.phone passenger_phone,d.name driver_name,d.phone driver_phone FROM rides r JOIN users p ON p.id=r.passenger_id LEFT JOIN users d ON d.id=r.driver_id WHERE r.id=?`).get(req.params.id);
+  });
+  try { res.json({ride:tx()}); } catch(e) { res.status(409).json({error:e.message}); }
+});
+
+app.post("/api/rides/:id/arrive", auth, (req,res)=>rideDriverAction(req,res,'accepted','arrived','arrived_at'));
+app.post("/api/rides/:id/start", auth, (req,res)=>rideDriverAction(req,res,'arrived','started','started_at'));
+app.post("/api/rides/:id/finish", auth, (req,res)=>rideDriverAction(req,res,'started','finished','finished_at'));
+
+function rideDriverAction(req,res,from,to,timeField){
+  if (req.auth.role!=="driver") return res.status(403).json({error:"Somente motoristas."});
+  const r=db.prepare("SELECT * FROM rides WHERE id=?").get(req.params.id);
+  if (!r || r.driver_id!==req.auth.sub) return res.status(404).json({error:"Corrida não encontrada."});
+  if (r.status!==from) return res.status(409).json({error:`A corrida precisa estar em ${from}.`});
+  db.prepare(`UPDATE rides SET status=?,${timeField}=CURRENT_TIMESTAMP WHERE id=?`).run(to,req.params.id);
+  res.json({ride:db.prepare("SELECT * FROM rides WHERE id=?").get(req.params.id)});
+}
+
+app.post("/api/rides/:id/cancel", auth, (req,res)=>{
+  const r=db.prepare("SELECT * FROM rides WHERE id=?").get(req.params.id);
+  if (!r) return res.status(404).json({error:"Corrida não encontrada."});
+  if (r.passenger_id!==req.auth.sub && r.driver_id!==req.auth.sub) return res.status(403).json({error:"Acesso negado."});
+  if (!['requested','accepted','arrived','started'].includes(r.status)) return res.status(409).json({error:"Essa corrida não pode ser cancelada agora."});
+  const by=req.auth.role==='passenger'?'passenger':'driver';
+  let compensation=0;
+  if (by==='passenger' && r.status==='started' && r.started_at) {
+    const elapsed=(Date.now()-new Date(r.started_at.replace(' ','T')+'Z').getTime())/60000;
+    if (elapsed>=3) compensation=5;
+  }
+  db.prepare("UPDATE rides SET status='cancelled',cancelled_at=CURRENT_TIMESTAMP,cancelled_by=?,cancel_reason=?,driver_compensation=? WHERE id=?")
+    .run(by,clean(req.body.reason)||'Cancelamento solicitado',compensation,req.params.id);
+  res.json({ok:true,compensation,ride:db.prepare("SELECT * FROM rides WHERE id=?").get(req.params.id)});
+});
+
 app.post("/api/admin/login", async (req,res)=>{
   const email = clean(req.body.email).toLowerCase();
   const password = String(req.body.password || "");
@@ -205,8 +333,8 @@ app.post("/api/admin/drivers/:id/reject", auth, admin, (req,res)=>{
   res.json({ok:true,message:"Cadastro rejeitado."});
 });
 
-app.use(express.static(__dirname));
-app.get("/*splat", (req,res)=>res.sendFile(path.join(__dirname,"index.html")));
+app.get("/", (req,res)=>res.sendFile(path.join(__dirname,"index.html")));
+
 app.use((err,req,res,next)=>{
   console.error(err);
   res.status(400).json({error:err.message || "Erro na requisição."});
