@@ -1,9 +1,7 @@
-DYABY V3.7 — FLUXO DE ATIVIDADE ATIVA
-
-- Nova janela quando o usuário tenta iniciar/aceitar uma nova atividade enquanto já possui uma ativa.
-- Opções: Retornar à corrida/entrega; Cancelar a atual e continuar; Fechar.
-- Depois de cancelar, a ação original continua automaticamente.
-- Corridas não aceitas expiram em 4 minutos.
-- Encomendas não aceitas expiram em 20 minutos.
-- O motorista não pode aceitar a própria encomenda. Para testar cliente -> entregador, use duas contas diferentes.
+DYABY V3.8 — ENCOMENDA REAL
+- Buscar entregador mostra envio e depois BUSCANDO ENTREGADOR.
+- Cancelamento real de encomenda.
+- A área de entregas do motorista atualiza automaticamente.
+- Encomendas com mais de 20 minutos não aparecem.
+- O motorista não pode aceitar a própria encomenda; use contas diferentes para testar.
 - Não apagar o banco de dados.
