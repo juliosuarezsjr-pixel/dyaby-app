@@ -1,0 +1,8 @@
+DYABY V7 VISUAL
+
+- Mantém o index e backend da V6.
+- Adiciona mascote visível em todas as categorias da tela inicial.
+- O mascote usa o mesmo personagem DYABY, com tratamento visual diferente para a área Só mulheres.
+- Não altera endpoints do backend.
+
+Deploy: substitua os arquivos no GitHub e aguarde o Render publicar.
