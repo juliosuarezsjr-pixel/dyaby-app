@@ -687,6 +687,7 @@ async function loadAdminDrivers(){
     }
     box.innerHTML = data.drivers.map(d => {
       const status = d.status || "pending";
+      const pendingApproval = status !== "active" && !d.approved_at;
       const label = status === "active" ? "✅ Aprovado" :
                     status === "rejected" ? "❌ Rejeitado" : "⏳ Pendente";
       return `<div class="card" style="margin:10px 0;background:#0e0e0e">
@@ -695,7 +696,7 @@ async function loadAdminDrivers(){
         <div class="small">CPF: ${escapeHtml(d.cpf || "—")} · WhatsApp: ${escapeHtml(d.phone || "—")}</div>
         <div class="small">CNH: ${escapeHtml(d.cnh || "—")} · Moto: ${escapeHtml(d.vehicle_model || "—")} · Placa: ${escapeHtml(d.plate || "—")}</div>
         <p>${label}</p>
-        ${status === "pending" ? `<div class="row">
+        ${pendingApproval ? `<div class="row">
           <button class="btn primary" style="width:48%" onclick="approveDriver(${Number(d.id)})">Aprovar</button>
           <button class="btn outline" style="width:48%" onclick="rejectDriver(${Number(d.id)})">Rejeitar</button>
         </div>` : ""}
