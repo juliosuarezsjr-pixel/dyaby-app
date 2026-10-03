@@ -1,25 +1,27 @@
-DYABY V2.6 - CORREÇÃO DE DISPONIBILIDADE E ADMIN
+DYABY V2.8 — CORREÇÃO DO FLUXO DA CORRIDA
 
-Principais correções:
-- Corridas disponíveis agora usam filtro de corrida ainda em searching, sem motorista e nunca mostram a própria corrida do motorista.
-- Endpoints de corridas ativas/disponíveis usam tratamento seguro de erros assíncronos para evitar queda do processo Node quando PostgreSQL falhar.
-- Painel administrativo: os indicadores são calculados de forma independente; se uma consulta opcional falhar, o restante do painel continua funcionando.
-- Mantida a sessão administrativa separada.
-- Mantida a lógica de aprovação de motoristas/comércios.
+Esta versão mantém a regra de preço:
+- até 1 km: R$ 5,00
+- acima de 1 km: cálculo por distância
 
-Deploy:
-1. Substitua server.js, index.html, package.json e INSTRUCOES.txt no GitHub.
-2. Aguarde o Render terminar o deploy.
-3. Faça login novamente no /admin.
-4. Teste primeiro Motoristas e Taxas; depois teste Corridas como motorista.
+Correções principais:
+1. Cliente vê imediatamente a tela azul "CORRIDA SOLICITADA" quando a corrida é criada.
+2. O cliente não depende de uma segunda chamada /rides/:id para mostrar a corrida.
+3. Depois da solicitação, o cliente consulta a corrida ativa automaticamente a cada 2,5 segundos.
+4. Quando o motorista aceita, o cliente atualiza automaticamente e mostra "MOTORISTA ACEITOU".
+5. Se a primeira resposta do servidor falhar depois que a corrida foi criada, o cliente tenta recuperar a corrida ativa por até 9 segundos, evitando duplicidade.
+6. Erros temporários de rede durante o acompanhamento não tiram o cliente da corrida nem mostram "Failed to fetch".
+7. Ao reabrir o aplicativo, uma corrida ativa é recuperada automaticamente.
+8. Motoristas continuam recebendo novas corridas automaticamente a cada 5 segundos.
+9. Corridas permanecem disponíveis por no máximo 4 minutos e desaparecem imediatamente após aceitação.
+10. Corridas aceitas deixam de aparecer para outros motoristas.
 
-Variáveis do Render:
-DATABASE_URL
-JWT_SECRET
-ADMIN_EMAIL
-ADMIN_PASSWORD
+Arquivos para atualizar no GitHub:
+- index.html
+- server.js
+- package.json
 
-Não apague o banco de dados.
-
-
-V2.6: corrida <= 1 km custa R$5; corridas disponíveis expiram da lista após 15 minutos se ainda não foram aceitas; backend com timeouts de PostgreSQL e logs de erros de processo.
+Depois do commit, aguarde o deploy do Render e teste:
+Cliente → Pedir agora → deve aparecer "CORRIDA SOLICITADA".
+Motorista → Corridas → aceitar.
+Cliente → deve mudar sozinho para "MOTORISTA ACEITOU".
