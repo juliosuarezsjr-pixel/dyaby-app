@@ -687,7 +687,7 @@ async function loadAdminDrivers(){
     }
     box.innerHTML = data.drivers.map(d => {
       const status = d.status || "pending";
-      const pendingApproval = status !== "active" && !d.approved_at;
+      const pendingApproval = status !== "active" && status !== "rejected";
       const label = status === "active" ? "✅ Aprovado" :
                     status === "rejected" ? "❌ Rejeitado" : "⏳ Pendente";
       return `<div class="card" style="margin:10px 0;background:#0e0e0e">
