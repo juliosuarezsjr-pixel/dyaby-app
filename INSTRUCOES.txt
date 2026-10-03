@@ -1,7 +1,13 @@
-DYABY V3.8 — ENCOMENDA REAL
-- Buscar entregador mostra envio e depois BUSCANDO ENTREGADOR.
-- Cancelamento real de encomenda.
-- A área de entregas do motorista atualiza automaticamente.
-- Encomendas com mais de 20 minutos não aparecem.
-- O motorista não pode aceitar a própria encomenda; use contas diferentes para testar.
-- Não apagar o banco de dados.
+DYABY V3 VISUAL
+
+Esta versão aplica um visual inspirado no mockup enviado: preto premium, amarelo DYABY, cartões arredondados, botões grandes, navegação inferior e tela inicial mais visual.
+
+IMPORTANTE: o server.js e package.json foram mantidos sem alteração para não quebrar as funções atuais.
+
+Para publicar no GitHub:
+1. Abra o repositório dyaby-app.
+2. Substitua index.html, server.js, package.json e INSTRUCOES.txt pelos arquivos desta pasta.
+3. Faça commit na branch main.
+4. O Render fará o deploy automático.
+
+Não cole chaves/secrets no código.
