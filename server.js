@@ -133,6 +133,24 @@ async function initDatabase() {
       document_path TEXT,
       approved_at TIMESTAMPTZ
     );
+
+    CREATE TABLE IF NOT EXISTS rides (
+      id SERIAL PRIMARY KEY,
+      passenger_id INTEGER NOT NULL REFERENCES users(id),
+      driver_id INTEGER REFERENCES users(id),
+      destination TEXT NOT NULL,
+      price NUMERIC(10,2) NOT NULL,
+      women_only BOOLEAN NOT NULL DEFAULT FALSE,
+      status TEXT NOT NULL DEFAULT 'searching',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      accepted_at TIMESTAMPTZ,
+      arrived_at TIMESTAMPTZ,
+      started_at TIMESTAMPTZ,
+      finished_at TIMESTAMPTZ,
+      cancelled_at TIMESTAMPTZ,
+      cancelled_by TEXT,
+      driver_compensation NUMERIC(10,2) NOT NULL DEFAULT 0
+    );
   `);
 
   // Se o antigo SQLite ainda existir no ambiente, tenta preservar
@@ -396,6 +414,191 @@ app.post("/api/driver/documents", auth, upload.single("document"), async (req, r
   } catch (err) {
     console.error("DOCUMENT:", err);
     res.status(500).json({ error: "Erro ao salvar documento." });
+  }
+});
+
+
+function ridePayload(row) {
+  return {
+    id: row.id,
+    passenger_id: row.passenger_id,
+    driver_id: row.driver_id,
+    destination: row.destination,
+    price: Number(row.price),
+    women_only: row.women_only,
+    status: row.status,
+    created_at: row.created_at,
+    accepted_at: row.accepted_at,
+    arrived_at: row.arrived_at,
+    started_at: row.started_at,
+    finished_at: row.finished_at,
+    cancelled_at: row.cancelled_at,
+    cancelled_by: row.cancelled_by,
+    driver_compensation: Number(row.driver_compensation || 0),
+    driver_name: row.driver_name || null
+  };
+}
+
+async function getRide(id) {
+  const r = await pool.query(`
+    SELECT r.*, u.name AS driver_name
+    FROM rides r
+    LEFT JOIN users u ON u.id=r.driver_id
+    WHERE r.id=$1
+  `, [id]);
+  return r.rows[0] || null;
+}
+
+app.post("/api/rides", auth, async (req, res) => {
+  try {
+    if (req.auth.role !== "passenger") {
+      return res.status(403).json({ error: "Somente passageiros podem solicitar corrida." });
+    }
+    const destination = clean(req.body.destination);
+    const price = Number(req.body.price);
+    const womenOnly = Boolean(req.body.womenOnly);
+    if (!destination) return res.status(400).json({ error: "Informe o destino." });
+    if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: "Valor da corrida inválido." });
+
+    const active = await pool.query(`
+      SELECT id FROM rides
+      WHERE passenger_id=$1 AND status IN ('searching','accepted','arrived','started')
+      LIMIT 1
+    `, [req.auth.sub]);
+    if (active.rowCount) return res.status(409).json({ error: "Você já possui uma corrida em andamento." });
+
+    const r = await pool.query(`
+      INSERT INTO rides(passenger_id,destination,price,women_only)
+      VALUES($1,$2,$3,$4)
+      RETURNING *
+    `, [req.auth.sub, destination, price, womenOnly]);
+    res.status(201).json({ ride: ridePayload(r.rows[0]) });
+  } catch (err) {
+    console.error("CREATE RIDE:", err);
+    res.status(500).json({ error: "Erro ao solicitar corrida." });
+  }
+});
+
+app.get("/api/rides/active", auth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT r.*, u.name AS driver_name
+      FROM rides r LEFT JOIN users u ON u.id=r.driver_id
+      WHERE (r.passenger_id=$1 OR r.driver_id=$1)
+        AND r.status IN ('searching','accepted','arrived','started')
+      ORDER BY r.id DESC LIMIT 1
+    `, [req.auth.sub]);
+    res.json({ ride: r.rows[0] ? ridePayload(r.rows[0]) : null });
+  } catch (err) {
+    console.error("ACTIVE RIDE:", err);
+    res.status(500).json({ error: "Erro ao carregar corrida." });
+  }
+});
+
+app.get("/api/rides/available", auth, async (req, res) => {
+  try {
+    if (req.auth.role !== "driver") return res.status(403).json({ error: "Somente motoristas." });
+    const me = await pool.query("SELECT status FROM users WHERE id=$1", [req.auth.sub]);
+    if (!me.rows[0] || me.rows[0].status !== "approved") {
+      return res.status(403).json({ error: "Cadastro de motorista ainda não foi aprovado." });
+    }
+    const r = await pool.query(`
+      SELECT * FROM rides
+      WHERE status='searching'
+        AND driver_id IS NULL
+        AND passenger_id <> $1
+      ORDER BY created_at ASC
+      LIMIT 20
+    `, [req.auth.sub]);
+    res.json({ rides: r.rows.map(ridePayload) });
+  } catch (err) {
+    console.error("AVAILABLE RIDES:", err);
+    res.status(500).json({ error: "Erro ao buscar corridas." });
+  }
+});
+
+app.get("/api/rides/:id", auth, async (req, res) => {
+  try {
+    const ride = await getRide(req.params.id);
+    if (!ride) return res.status(404).json({ error: "Corrida não encontrada." });
+    if (Number(ride.passenger_id) !== Number(req.auth.sub) && Number(ride.driver_id) !== Number(req.auth.sub)) {
+      return res.status(403).json({ error: "Você não participa desta corrida." });
+    }
+    res.json({ ride: ridePayload(ride) });
+  } catch (err) {
+    console.error("GET RIDE:", err);
+    res.status(500).json({ error: "Erro ao carregar corrida." });
+  }
+});
+
+app.post("/api/rides/:id/accept", auth, async (req, res) => {
+  try {
+    if (req.auth.role !== "driver") return res.status(403).json({ error: "Somente motoristas." });
+    const driver = await pool.query("SELECT status FROM users WHERE id=$1", [req.auth.sub]);
+    if (!driver.rows[0] || driver.rows[0].status !== "approved") {
+      return res.status(403).json({ error: "Motorista ainda não aprovado." });
+    }
+    const r = await pool.query(`
+      UPDATE rides
+      SET driver_id=$1,status='accepted',accepted_at=CURRENT_TIMESTAMP
+      WHERE id=$2 AND status='searching' AND driver_id IS NULL
+      RETURNING *
+    `, [req.auth.sub, req.params.id]);
+    if (!r.rowCount) return res.status(409).json({ error: "Esta corrida já foi aceita ou não está disponível." });
+    const ride = await getRide(req.params.id);
+    res.json({ ride: ridePayload(ride) });
+  } catch (err) {
+    console.error("ACCEPT RIDE:", err);
+    res.status(500).json({ error: "Erro ao aceitar corrida." });
+  }
+});
+
+async function transitionRide(req, res, from, to, timeColumn) {
+  try {
+    if (req.auth.role !== "driver") return res.status(403).json({ error: "Somente motoristas." });
+    const r = await pool.query(`
+      UPDATE rides SET status=$1, ${timeColumn}=CURRENT_TIMESTAMP
+      WHERE id=$2 AND driver_id=$3 AND status=$4
+      RETURNING *
+    `, [to, req.params.id, req.auth.sub, from]);
+    if (!r.rowCount) return res.status(409).json({ error: "A corrida não está no estado esperado." });
+    const ride = await getRide(req.params.id);
+    res.json({ ride: ridePayload(ride) });
+  } catch (err) {
+    console.error("RIDE TRANSITION:", err);
+    res.status(500).json({ error: "Erro ao atualizar corrida." });
+  }
+}
+
+app.post("/api/rides/:id/arrive", auth, (req,res) => transitionRide(req,res,'accepted','arrived','arrived_at'));
+app.post("/api/rides/:id/start", auth, (req,res) => transitionRide(req,res,'arrived','started','started_at'));
+app.post("/api/rides/:id/finish", auth, (req,res) => transitionRide(req,res,'started','finished','finished_at'));
+
+app.post("/api/rides/:id/cancel", auth, async (req, res) => {
+  try {
+    const ride = await getRide(req.params.id);
+    if (!ride) return res.status(404).json({ error: "Corrida não encontrada." });
+    const isPassenger = Number(ride.passenger_id) === Number(req.auth.sub);
+    const isDriver = Number(ride.driver_id) === Number(req.auth.sub);
+    if (!isPassenger && !isDriver) return res.status(403).json({ error: "Você não participa desta corrida." });
+    if (['finished','cancelled'].includes(ride.status)) return res.status(409).json({ error: "Esta corrida já foi encerrada." });
+
+    let compensation = 0;
+    if (isPassenger && ride.status === 'started' && ride.started_at) {
+      const minutes = (Date.now() - new Date(ride.started_at).getTime()) / 60000;
+      if (minutes >= 3) compensation = 5;
+    }
+
+    await pool.query(`
+      UPDATE rides
+      SET status='cancelled',cancelled_at=CURRENT_TIMESTAMP,cancelled_by=$1,driver_compensation=$2
+      WHERE id=$3
+    `, [isPassenger ? 'passenger' : 'driver', compensation, ride.id]);
+    const updated = await getRide(ride.id);
+    res.json({ ride: ridePayload(updated), message: compensation ? `Cancelamento registrado. Compensação do motorista: R$ ${compensation.toFixed(2)}.` : "Corrida cancelada." });
+  } catch (err) {
+    console.error("CANCEL RIDE:", err);
+    res.status(500).json({ error: "Erro ao cancelar corrida." });
   }
 });
 
