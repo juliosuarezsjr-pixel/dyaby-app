@@ -34,7 +34,14 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 300 }));
+// Limite simples para não bloquear usuários atrás do mesmo IP/proxy do Render.
+// Em produção, recomenda-se aplicar rate limit específico nas rotas sensíveis.
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 2000,
+  standardHeaders: true,
+  legacyHeaders: false
+}));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 const upload = multer({
