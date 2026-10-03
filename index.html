@@ -24,16 +24,43 @@ function updateNav(){const r=currentUser?.role;const hideRide=r==='commerce';if(
 function showActiveWorkModal(work){
   document.getElementById('dyabyActiveModal')?.remove();
   const hasRide=!!work?.ride,hasOrder=!!work?.order;
+  const item=hasRide?work.ride:work.order;
   const title=hasRide?'🏍️ Você já tem uma corrida ativa':'📦 Você já tem uma entrega ativa';
-  const desc=hasRide?(work.ride.destination||'Corrida em andamento'):(work.order.delivery_address||'Entrega em andamento');
-  const type=hasRide?'ride':'order',id=hasRide?work.ride.id:work.order.id;
-  const div=document.createElement('div');div.id='dyabyActiveModal';div.style='position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:99999;display:flex;align-items:flex-end;justify-content:center;padding:16px';
-  div.innerHTML='<div style="background:#fff;color:#111;border-radius:24px;padding:22px;width:min(520px,100%);box-shadow:0 12px 40px rgba(0,0,0,.4)"><h2 style="margin:0 0 8px">'+title+'</h2><p style="margin:0 0 8px;font-size:17px">'+esc(desc)+'</p><p style="color:#666;margin:0 0 18px">Finalize ou cancele a atividade atual antes de iniciar outra.</p><button class="btn primary" style="width:100%;margin-bottom:10px" onclick="goToActiveWork(\''+type+'\','+Number(id)+')">↩️ Retornar à '+(hasRide?'corrida':'entrega')+'</button><button class="btn outline" style="width:100%" onclick="document.getElementById(\'dyabyActiveModal\').remove()">Fechar</button></div>';
+  const desc=hasRide?(item.destination||'Corrida em andamento'):(item.delivery_address||'Entrega em andamento');
+  const type=hasRide?'ride':'order',id=Number(item.id);
+  const div=document.createElement('div');
+  div.id='dyabyActiveModal';
+  div.style='position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:99999;display:flex;align-items:flex-end;justify-content:center;padding:16px';
+  div.innerHTML=`<div style="background:#fff;color:#111;border-radius:24px;padding:22px;width:min(520px,100%);box-shadow:0 12px 40px rgba(0,0,0,.4)">
+    <h2 style="margin:0 0 8px">${title}</h2>
+    <p style="margin:0 0 8px;font-size:17px"><b>${esc(desc)}</b></p>
+    <p style="color:#666;margin:0 0 18px">Escolha o que deseja fazer.</p>
+    <button class="btn primary" style="width:100%;margin-bottom:10px" onclick="goToActiveWork('${type}',${id})">↩️ Retornar à ${hasRide?'corrida':'entrega'}</button>
+    <button class="btn outline" style="width:100%;margin-bottom:10px" onclick="cancelActiveAndContinue('${type}',${id})">❌ ${hasRide?'Cancelar corrida atual e continuar':'Cancelar entrega atual e continuar'}</button>
+    <button class="btn outline" style="width:100%" onclick="document.getElementById('dyabyActiveModal').remove()">Fechar</button>
+  </div>`;
   document.body.appendChild(div);
 }
 async function getActiveWork(){try{return await api('/me/active-work')}catch{return {ride:null,order:null}}}
+async function cancelActiveAndContinue(type,id){
+  if(!confirm(type==='ride'?'Cancelar a corrida atual e continuar?':'Cancelar a entrega atual e continuar?'))return;
+  try{
+    await api(type==='ride'?'/rides/'+id+'/cancel':'/package-deliveries/'+id+'/cancel',{method:'POST',body:'{}'});
+    document.getElementById('dyabyActiveModal')?.remove();
+    const next=window._activeWorkContinue;window._activeWorkContinue=null;
+    if(next)setTimeout(next,150);
+  }catch(e){alert(e.message||'Não foi possível cancelar a atividade atual.')}
+}
 async function goToActiveWork(type,id){document.getElementById('dyabyActiveModal')?.remove();if(type==='ride'){if(currentUser?.role==='driver'){show('driver');driverTab('rides');await syncDriverActive();setTimeout(()=>document.getElementById('driverActive')?.scrollIntoView({behavior:'smooth',block:'center'}),100)}else{try{const d=await api('/rides/active');const r=(d.rides||[]).find(x=>Number(x.id)===Number(id))||d.rides?.[0];if(r){currentRide=r;show('trip');renderTripCard();startPassengerRidePolling();startRadar()}}catch{}}}else{if(currentUser?.role==='driver'){show('driver');driverTab('deliveries');await syncDriverDelivery();setTimeout(()=>document.getElementById('driverDeliveryActive')?.scrollIntoView({behavior:'smooth',block:'center'}),100)}else{packageDeliveryId=id;show('delivery');try{const d=await api('/package-deliveries/'+id);renderPackageDeliveryStatus(d.order);startPackageDeliveryPolling()}catch{}}}}
-async function guardNoActiveWork(){const w=await getActiveWork();if(w.ride||w.order){showActiveWorkModal(w);return false}return true}
+async function guardNoActiveWork(afterAction){
+  const w=await getActiveWork();
+  if(w.ride||w.order){
+    window._activeWorkContinue=afterAction||null;
+    showActiveWorkModal(w);
+    return false;
+  }
+  return true;
+}
 async function api(path,opt={}){
   opt.headers=opt.headers||{};
   if(!(opt.body instanceof FormData))opt.headers['Content-Type']='application/json';
@@ -194,7 +221,15 @@ async function loadAvailable(){
     }).join(''):'<p class="muted">Nenhuma corrida disponível.</p>';
   }catch(e){$('available').textContent=e.message}
 }
-async function acceptRide(id){const w=await getActiveWork();if(w.ride||w.order){showActiveWorkModal(w);return}try{const d=await api('/rides/'+id+'/accept',{method:'POST',body:'{}'});currentRide=d.ride;renderDriverActive();loadAvailable();driverTab('rides');setTimeout(()=>document.getElementById('driverActive')?.scrollIntoView({behavior:'smooth',block:'center'}),100)}catch(e){alert(e.message)}}
+async function acceptRide(id){
+  const w=await getActiveWork();
+  if(w.ride||w.order){window._activeWorkContinue=()=>acceptRide(id);showActiveWorkModal(w);return}
+  try{
+    const d=await api('/rides/'+id+'/accept',{method:'POST',body:'{}'});
+    currentRide=d.ride;await renderDriverActive();loadAvailable();driverTab('rides');
+    setTimeout(()=>document.getElementById('driverActive')?.scrollIntoView({behavior:'smooth',block:'center'}),100)
+  }catch(e){alert(e.message)}
+}
 async function syncDriverActive(){
   if(currentUser?.role!=='driver'||currentUser?.status!=='active')return;
   try{
@@ -321,7 +356,19 @@ async function showDeliveryDriverRoute(o){
     try{const u='https://router.project-osrm.org/route/v1/driving/'+here[1]+','+here[0]+';'+target[1]+','+target[0]+'?overview=full&geometries=geojson';const d=await fetch(u).then(r=>r.json());if(d.routes?.[0]){if(window.deliveryRouteLayer)window.deliveryDriverMap.removeLayer(window.deliveryRouteLayer);window.deliveryRouteLayer=L.geoJSON(d.routes[0].geometry,{style:{weight:6}}).addTo(window.deliveryDriverMap);window.deliveryDriverMap.fitBounds(window.deliveryRouteLayer.getBounds().pad(.15))}}catch{}
   }
 }
-async function acceptDelivery(id){const w=await getActiveWork();if(w.ride||w.order){showActiveWorkModal(w);return}try{const d=await api('/orders/'+id+'/accept',{method:'POST',body:'{}'});window.currentDelivery=d.order;await renderDriverDelivery(d.order);loadAvailableDeliveries();driverTab('deliveries');setTimeout(()=>document.getElementById('driverDeliveryActive')?.scrollIntoView({behavior:'smooth',block:'center'}),100)}catch(e){const w2=await getActiveWork();if(w2.ride||w2.order)showActiveWorkModal(w2);else alert(e.message)}}
+async function acceptDelivery(id){
+  const w=await getActiveWork();
+  if(w.ride||w.order){window._activeWorkContinue=()=>acceptDelivery(id);showActiveWorkModal(w);return}
+  try{
+    const d=await api('/orders/'+id+'/accept',{method:'POST',body:'{}'});
+    window.currentDelivery=d.order;await renderDriverDelivery(d.order);loadAvailableDeliveries();driverTab('deliveries');
+    setTimeout(()=>document.getElementById('driverDeliveryActive')?.scrollIntoView({behavior:'smooth',block:'center'}),100)
+  }catch(e){
+    const w2=await getActiveWork();
+    if(w2.ride||w2.order){window._activeWorkContinue=()=>acceptDelivery(id);showActiveWorkModal(w2)}
+    else alert(e.message)
+  }
+}
 async function startDelivery(id){try{const d=await api('/orders/'+id+'/start',{method:'POST',body:'{}'});window.currentDelivery=d.order;await renderDriverDelivery(d.order)}catch(e){alert(e.message)}}
 async function deliveryAction(a,id){try{const d=await api('/orders/'+id+'/'+a,{method:'POST',body:'{}'});window.currentDelivery=d.order;await renderDriverDelivery(d.order);loadAvailableDeliveries();if(a==='deliver'){window.currentDelivery=null;$('driverDeliveryActive').innerHTML='<p class="ok">✅ Entrega concluída.</p>'}}catch(e){alert(e.message)}}
 async function showHomeByRole(){if(currentUser?.role==='driver'){show('driver');driverTab('rides');loadAvailable();syncDriverActive();syncDriverDelivery()}else if(currentUser?.role==='passenger')show('home');else show('commerce')}
@@ -335,7 +382,7 @@ async function buyProduct(pid,cid){try{const kmInput=document.getElementById('km
 async function useDeliveryLocation(){if(!navigator.geolocation){$('deliveryPickup').textContent='Localização não disponível no navegador.';return}try{const pos=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,timeout:10000,maximumAge:30000}));deliveryPickupCoords=[pos.coords.latitude,pos.coords.longitude];let address='Minha localização atual';try{const r=await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+deliveryPickupCoords[0]+'&lon='+deliveryPickupCoords[1]+'&zoom=18&addressdetails=1');const d=await r.json();address=d.display_name||address}catch{}$('deliveryPickup').innerHTML='📍 <b>Localização automática encontrada</b><br><span class="small">'+esc(address)+'</span>';$('deliveryPickup').dataset.address=address;$('deliveryQuote').textContent='Agora informe o destino.'}catch(e){$('deliveryPickup').textContent='Não foi possível obter sua localização. Permita a localização no navegador.'}}
 async function findDeliveryDestination(){const address=$('deliveryAddress').value.trim();if(!address){$('deliveryQuote').textContent='Informe o endereço de entrega.';return}if(!deliveryPickupCoords){await useDeliveryLocation();if(!deliveryPickupCoords)return}try{$('deliveryQuote').textContent='Calculando rota...';const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q='+encodeURIComponent(address));const geo=await r.json();if(!geo[0])throw new Error('Destino não encontrado.');deliveryDestinationCoords=[Number(geo[0].lat),Number(geo[0].lon)];const route=await fetch('https://router.project-osrm.org/route/v1/driving/'+deliveryPickupCoords[1]+','+deliveryPickupCoords[0]+';'+deliveryDestinationCoords[1]+','+deliveryDestinationCoords[0]+'?overview=false').then(x=>x.json());if(!route.routes?.[0])throw new Error('Não foi possível calcular a distância.');const km=route.routes[0].distance/1000;$('deliveryKm').value=km.toFixed(1);await quoteDelivery()}catch(e){$('deliveryQuote').textContent=e.message||'Não foi possível calcular a entrega.'}}
 async function quoteDelivery(){const km=Number($('deliveryKm').value||0);if(!km){$('deliveryQuote').textContent='Calcule o destino primeiro.';return}try{const d=await api('/delivery/quote?km='+km);$('deliveryQuote').innerHTML='🚚 Taxa estimada: <span class="price">R$ '+d.deliveryFee.toFixed(2).replace('.',',')+'</span><br><span class="small">'+km.toFixed(1)+' km · coleta pela sua localização automática</span>'}catch(e){$('deliveryQuote').textContent=e.message}}
-async function createPackageDelivery(){const type=$('packageType').value,desc=$('packageDescription').value.trim(),address=$('deliveryAddress').value.trim(),km=Number($('deliveryKm').value||0),pickupAddress=$('deliveryPickup').dataset.address||'Minha localização atual';if(!type||!desc){$('deliveryStatus').textContent='Informe o tipo e descreva a encomenda.';return}if(!deliveryPickupCoords||!deliveryDestinationCoords||!address||!km){$('deliveryStatus').textContent='Use sua localização e busque o destino antes de solicitar.';return}if(!(await guardNoActiveWork()))return;try{const d=await api('/package-deliveries',{method:'POST',body:JSON.stringify({packageType:type,packageDescription:desc,pickupAddress,pickupLat:deliveryPickupCoords[0],pickupLng:deliveryPickupCoords[1],deliveryAddress:address,deliveryLat:deliveryDestinationCoords[0],deliveryLng:deliveryDestinationCoords[1],deliveryKm:km})});packageDeliveryId=d.order.id;$('deliveryStatus').innerHTML='🚚 <b>BUSCANDO ENTREGADOR...</b><br><span class="small">A encomenda já está disponível para os entregadores próximos.</span>';startPackageDeliveryPolling()}catch(e){$('deliveryStatus').textContent=e.message}}
+async function createPackageDelivery(){const type=$('packageType').value,desc=$('packageDescription').value.trim(),address=$('deliveryAddress').value.trim(),km=Number($('deliveryKm').value||0),pickupAddress=$('deliveryPickup').dataset.address||'Minha localização atual';if(!type||!desc){$('deliveryStatus').textContent='Informe o tipo e descreva a encomenda.';return}if(!deliveryPickupCoords||!deliveryDestinationCoords||!address||!km){$('deliveryStatus').textContent='Use sua localização e busque o destino antes de solicitar.';return}if(!(await guardNoActiveWork(()=>createPackageDelivery())))return;try{const d=await api('/package-deliveries',{method:'POST',body:JSON.stringify({packageType:type,packageDescription:desc,pickupAddress,pickupLat:deliveryPickupCoords[0],pickupLng:deliveryPickupCoords[1],deliveryAddress:address,deliveryLat:deliveryDestinationCoords[0],deliveryLng:deliveryDestinationCoords[1],deliveryKm:km})});packageDeliveryId=d.order.id;$('deliveryStatus').innerHTML='🚚 <b>BUSCANDO ENTREGADOR...</b><br><span class="small">A encomenda já está disponível para os entregadores próximos.</span>';startPackageDeliveryPolling()}catch(e){$('deliveryStatus').textContent=e.message}}
 function startPackageDeliveryPolling(){if(window._packageDeliveryTimer)clearInterval(window._packageDeliveryTimer);window._packageDeliveryTimer=setInterval(async()=>{if(!packageDeliveryId)return;try{const d=await api('/package-deliveries/'+packageDeliveryId);const o=d.order;const text=o.status==='searching_driver'?'🚚 <b>BUSCANDO ENTREGADOR...</b>':o.status==='driver_accepted'?'🟢 <b>ENTREGADOR ACEITOU</b><br>'+esc(o.driver_name||'Entregador'):'📦 <b>'+esc(o.status)+'</b>';$('deliveryStatus').innerHTML=text;if(['delivered','cancelled'].includes(String(o.status))){clearInterval(window._packageDeliveryTimer);window._packageDeliveryTimer=null}}catch{}} ,2500)}
 async function saveProfile(){try{await api('/me',{method:'PUT',body:JSON.stringify({address:$('profileAddress').value})});$('profileMsg').textContent='Dados salvos.'}catch(e){$('profileMsg').textContent=e.message}}async function requestPhotoChange(){if(!$('profilePhoto').files[0]){$('profileMsg').textContent='Escolha uma foto primeiro.';return}const f=new FormData();f.append('photo',$('profilePhoto').files[0]);try{const d=await api('/profile/photo-request',{method:'POST',body:f});$('profileMsg').textContent=d.message}catch(e){$('profileMsg').textContent=e.message}}
 async function sendHelp(){try{const d=await api('/help',{method:'POST',body:JSON.stringify({subject:$('helpSubject').value||'Ajuda',message:$('helpMessage').value})});$('helpMsg').textContent='Solicitação enviada #'+d.ticket.id}catch(e){$('helpMsg').textContent=e.message}}

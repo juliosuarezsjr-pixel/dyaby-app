@@ -1,11 +1,9 @@
-DYABY V3.6 — ESTADO REAL DA CORRIDA
+DYABY V3.7 — FLUXO DE ATIVIDADE ATIVA
 
-Correções principais:
-- Corrigido o polling do cliente: a função refreshPassengerRide agora existe e consulta a corrida pelo ID.
-- O cliente passa a receber imediatamente o status accepted/arrived/started/cancelled e o nome/localização do motorista.
-- Cancelamento do passageiro foi reforçado no servidor e retorna a corrida atualizada.
-- O motorista não pode aceitar outra corrida enquanto já tiver corrida ou entrega ativa.
-- O mapa do motorista não é reconstruído a cada 2 segundos; isso elimina o efeito de piscar. A posição do motorista é atualizada sem recriar o mapa.
-- O mapa do cliente continua acompanhando a posição do motorista.
-
-Suba os 4 arquivos no GitHub main e aguarde o Render. Não apague o banco de dados.
+- Nova janela quando o usuário tenta iniciar/aceitar uma nova atividade enquanto já possui uma ativa.
+- Opções: Retornar à corrida/entrega; Cancelar a atual e continuar; Fechar.
+- Depois de cancelar, a ação original continua automaticamente.
+- Corridas não aceitas expiram em 4 minutos.
+- Encomendas não aceitas expiram em 20 minutos.
+- O motorista não pode aceitar a própria encomenda. Para testar cliente -> entregador, use duas contas diferentes.
+- Não apagar o banco de dados.
