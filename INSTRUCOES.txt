@@ -1,17 +1,31 @@
-DYABY V3.2 — ENCOMENDAS E CORRIDAS: EXPIRAÇÃO + INÍCIO + MAPA
+DYABY V3.3 — CORREÇÃO MOTORISTA, ENTREGAS E MAPAS
 
-Subir para main: index.html, server.js, package.json e INSTRUCOES.txt.
+1. Suba estes arquivos para a branch main do GitHub:
+   - index.html
+   - server.js
+   - package.json
+   - INSTRUCOES.txt
 
-- Novas corridas e encomendas ficam disponíveis por no máximo 20 minutos.
-- Itens antigos deixam de aparecer para novos motoristas/entregadores.
-- Um motorista não pode aceitar uma nova corrida/encomenda enquanto já tiver uma ativa.
-- Ao aceitar corrida: mapa + Cheguei + Iniciar corrida.
-- Ao iniciar corrida: mapa passa a rota até o destino.
-- Ao aceitar encomenda: mapa + Iniciar entrega.
-- Iniciar entrega: status Indo para coleta + rota até a coleta.
-- Validar coleta: rota muda para o destino.
-- Validar entrega: encerra a entrega.
-- GPS do motorista continua sendo enviado periodicamente.
-- Cliente e motorista continuam sincronizados pelo banco.
+2. O Render fará o deploy automaticamente.
 
-Não remover as telas existentes de validação de coleta/entrega.
+CORREÇÕES DESTA VERSÃO:
+- Motorista não tenta mais pedir corrida de passageiro ao tocar em “Corrida”.
+- O botão “Corrida” do menu inferior abre a área de corridas do motorista.
+- Encomendas/corridas disponíveis para novos motoristas ficam limitadas a 20 minutos.
+- Uma entrega aceita sai da lista e permanece em “Minha entrega ativa”.
+- Motorista não pode aceitar outra entrega enquanto possui uma entrega ativa.
+- Após aceitar uma entrega aparece “Iniciar entrega”.
+- Após iniciar, aparece o mapa com rota até a coleta.
+- Depois da coleta, o mapa passa a mostrar a rota até o destino.
+- Corridas aceitas mostram mapa e rota.
+- Corridas têm “Cheguei”, “Iniciar corrida” e “Finalizar corrida”.
+- A localização do motorista continua sendo atualizada pelo GPS.
+
+BANCO:
+- A atualização usa a tabela orders existente.
+- O status “out_for_delivery” é usado para a etapa de entrega iniciada.
+- Não é necessário apagar o banco.
+
+AMBIENTE DO RENDER:
+DATABASE_URL e JWT_SECRET continuam obrigatórios.
+ADMIN_EMAIL e ADMIN_PASSWORD são necessários para /admin.
