@@ -1,30 +1,11 @@
-DYABY V3.4 — CORRIDA COM NAVEGAÇÃO E LOCALIZAÇÃO EM TEMPO REAL
+DYABY V3.6 — ESTADO REAL DA CORRIDA
 
-1. Suba estes arquivos para a branch main do GitHub:
-   - index.html
-   - server.js
-   - package.json
-   - INSTRUCOES.txt
+Correções principais:
+- Corrigido o polling do cliente: a função refreshPassengerRide agora existe e consulta a corrida pelo ID.
+- O cliente passa a receber imediatamente o status accepted/arrived/started/cancelled e o nome/localização do motorista.
+- Cancelamento do passageiro foi reforçado no servidor e retorna a corrida atualizada.
+- O motorista não pode aceitar outra corrida enquanto já tiver corrida ou entrega ativa.
+- O mapa do motorista não é reconstruído a cada 2 segundos; isso elimina o efeito de piscar. A posição do motorista é atualizada sem recriar o mapa.
+- O mapa do cliente continua acompanhando a posição do motorista.
 
-2. O Render fará o deploy automaticamente.
-
-CORRIDAS:
-- Motorista aceita a corrida e recebe mapa de navegação até o ponto de embarque.
-- Motorista pode marcar “Cheguei para embarque”.
-- Depois pode “Iniciar corrida”.
-- Ao iniciar, o mapa muda automaticamente para o destino.
-- Motorista pode “Finalizar corrida”.
-- A localização do motorista é enviada ao servidor a cada 3 segundos.
-- O cliente atualiza a posição do motorista aproximadamente a cada 2 segundos.
-- O cliente vê no mapa a moto do motorista, a rota e uma estimativa de tempo/distância.
-- As coordenadas do ponto de embarque são salvas na corrida para a navegação funcionar mesmo quando o texto do endereço for “Minha localização”.
-
-ENCOMENDAS:
-- Mantém o fluxo de encomendas já existente.
-- Não substituir as telas de validação de coleta/entrega que já funcionam.
-
-IMPORTANTE:
-- Não apagar nem recriar o banco PostgreSQL.
-- DATABASE_URL e JWT_SECRET continuam obrigatórios.
-- ADMIN_EMAIL e ADMIN_PASSWORD continuam necessários para /admin.
-- A localização em tempo real depende de o motorista permitir a localização no navegador/celular.
+Suba os 4 arquivos no GitHub main e aguarde o Render. Não apague o banco de dados.

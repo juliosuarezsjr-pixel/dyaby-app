@@ -21,6 +21,19 @@
 const API='/api';let token=localStorage.getItem('dyaby_token'),currentUser=null,currentRide=null,womenRide=false,originCoords=null,destinationCoords=null,map=null,routeLayer=null,originMarker=null,destinationMarker=null,radarMap=null,radarTimer=null,driverTimer=null,adminToken=localStorage.getItem('dyaby_admin_token'),driverMap=null,driverMapLayer=null,driverMapMarker=null,deliveryPickupCoords=null,deliveryDestinationCoords=null,packageDeliveryId=null;
 const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 function updateNav(){const r=currentUser?.role;const hideRide=r==='commerce';if($('navRide'))$('navRide').style.display=hideRide?'none':'block';}function show(id){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));$(id)?.classList.add('active');$('nav').style.display=['welcome','login','register','verify','adminLogin','admin'].includes(id)?'none':'flex';updateNav();scrollTo(0,0)}
+function showActiveWorkModal(work){
+  document.getElementById('dyabyActiveModal')?.remove();
+  const hasRide=!!work?.ride,hasOrder=!!work?.order;
+  const title=hasRide?'🏍️ Você já tem uma corrida ativa':'📦 Você já tem uma entrega ativa';
+  const desc=hasRide?(work.ride.destination||'Corrida em andamento'):(work.order.delivery_address||'Entrega em andamento');
+  const type=hasRide?'ride':'order',id=hasRide?work.ride.id:work.order.id;
+  const div=document.createElement('div');div.id='dyabyActiveModal';div.style='position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:99999;display:flex;align-items:flex-end;justify-content:center;padding:16px';
+  div.innerHTML='<div style="background:#fff;color:#111;border-radius:24px;padding:22px;width:min(520px,100%);box-shadow:0 12px 40px rgba(0,0,0,.4)"><h2 style="margin:0 0 8px">'+title+'</h2><p style="margin:0 0 8px;font-size:17px">'+esc(desc)+'</p><p style="color:#666;margin:0 0 18px">Finalize ou cancele a atividade atual antes de iniciar outra.</p><button class="btn primary" style="width:100%;margin-bottom:10px" onclick="goToActiveWork(\''+type+'\','+Number(id)+')">↩️ Retornar à '+(hasRide?'corrida':'entrega')+'</button><button class="btn outline" style="width:100%" onclick="document.getElementById(\'dyabyActiveModal\').remove()">Fechar</button></div>';
+  document.body.appendChild(div);
+}
+async function getActiveWork(){try{return await api('/me/active-work')}catch{return {ride:null,order:null}}}
+async function goToActiveWork(type,id){document.getElementById('dyabyActiveModal')?.remove();if(type==='ride'){if(currentUser?.role==='driver'){show('driver');driverTab('rides');await syncDriverActive();setTimeout(()=>document.getElementById('driverActive')?.scrollIntoView({behavior:'smooth',block:'center'}),100)}else{try{const d=await api('/rides/active');const r=(d.rides||[]).find(x=>Number(x.id)===Number(id))||d.rides?.[0];if(r){currentRide=r;show('trip');renderTripCard();startPassengerRidePolling();startRadar()}}catch{}}}else{if(currentUser?.role==='driver'){show('driver');driverTab('deliveries');await syncDriverDelivery();setTimeout(()=>document.getElementById('driverDeliveryActive')?.scrollIntoView({behavior:'smooth',block:'center'}),100)}else{packageDeliveryId=id;show('delivery');try{const d=await api('/package-deliveries/'+id);renderPackageDeliveryStatus(d.order);startPackageDeliveryPolling()}catch{}}}}
+async function guardNoActiveWork(){const w=await getActiveWork();if(w.ride||w.order){showActiveWorkModal(w);return false}return true}
 async function api(path,opt={}){
   opt.headers=opt.headers||{};
   if(!(opt.body instanceof FormData))opt.headers['Content-Type']='application/json';
@@ -47,17 +60,17 @@ async function register(){const msg=$('regMsg');try{const role=$('regRole').valu
 async function login(){try{const d=await api('/auth/login',{method:'POST',body:JSON.stringify({email:$('loginEmail').value.trim(),password:$('loginPassword').value})});token=d.token;localStorage.setItem('dyaby_token',token);if(d.needsVerification){show('verify');return}await loadMe()}catch(e){$('loginMsg').textContent=e.message||'Não foi possível entrar agora. Tente novamente em alguns segundos.'}}
 async function verifyOtp(){try{const d=await api('/auth/verify-whatsapp',{method:'POST',body:JSON.stringify({code:$('otpCode').value})});if(d.ok){$('otpMsg').textContent='WhatsApp verificado.';await loadMe()}}catch(e){$('otpMsg').textContent=e.message}}
 async function resendOtp(){try{const d=await api('/auth/resend-otp',{method:'POST',body:'{}'});$('otpMsg').textContent=d.devCode?'Código de teste: '+d.devCode:'Novo código enviado.'}catch(e){$('otpMsg').textContent=e.message}}
-async function loadMe(){if(!token){show('welcome');return}try{const d=await api('/me');currentUser=d.user;$('helloName').textContent=(currentUser.name||'Cliente')+' 👋';$('profileName').textContent=currentUser.name||'';$('profileRole').textContent=currentUser.role==='passenger'?'Cliente':currentUser.role==='driver'?'Motorista / Entregador':'Comércio';$('profileAddress').value=currentUser.address||'';if(currentUser.role==='passenger'){show('home');$('passengerProfileServices').style.display='block';try{const a=await api('/rides/active');const found=(a.rides||[]).find(r=>['searching','accepted','arrived','started'].includes(String(r.status)));if(found){currentRide=found;show('trip');renderTripCard();startPassengerRidePolling();startRadar()}}catch(_){}}else if(currentUser.role==='driver'){show('driver');setupDriver(d)}else{show('commerce');setupCommerce(d)}startHeartbeat()}catch(e){localStorage.removeItem('dyaby_token');token=null;show('login')}}
+async function loadMe(){if(!token){show('welcome');return}try{const d=await api('/me');currentUser=d.user;$('helloName').textContent=(currentUser.name||'Cliente')+' 👋';$('profileName').textContent=currentUser.name||'';$('profileRole').textContent=currentUser.role==='passenger'?'Cliente':currentUser.role==='driver'?'Motorista / Entregador':'Comércio';$('profileAddress').value=currentUser.address||'';if(currentUser.role==='passenger'){show('home');$('passengerProfileServices').style.display='block';try{const w=await getActiveWork();if(w.ride){currentRide=w.ride;show('trip');renderTripCard();startPassengerRidePolling();startRadar()}else if(w.order){packageDeliveryId=w.order.id;show('delivery');renderPackageDeliveryStatus(w.order);startPackageDeliveryPolling()}}catch(_){}}else if(currentUser.role==='driver'){show('driver');setupDriver(d)}else{show('commerce');setupCommerce(d)}startHeartbeat()}catch(e){localStorage.removeItem('dyaby_token');token=null;show('login')}}
 function showHomeByRole(){if(currentUser?.role==='passenger')show('home');else if(currentUser?.role==='driver')show('driver');else show('commerce')}function showProfileByRole(){if(currentUser?.role==='passenger')show('profile');else if(currentUser?.role==='driver'){show('driver');driverTab('profile')}else show('commerce')}
 function goBackHome(){showHomeByRole()}
 function setupDriver(d){$('driverName').textContent=currentUser.name;$('driverStatus').textContent=currentUser.status==='active'?'Cadastro aprovado.':'Cadastro pendente.';$('driverPending').style.display=currentUser.status==='active'?'none':'block';$('driverApproved').style.display=currentUser.status==='active'?'block':'none';if(d.driver)$('serviceMode').value=d.driver.service_mode||'all';if(currentUser.status==='active'){loadAvailable();loadAvailableDeliveries();startDriverLocation()}}
 function setupCommerce(d){$('commerceName').textContent=d.commerce?.trade_name||currentUser.name;$('commerceStatus').innerHTML=currentUser.status==='active'?'<span class="ok">✅ Comércio aprovado</span>':'<span>⏳ Comércio aguardando aprovação.</span>';loadProducts();loadCommerceOrders();$('commerceProfileData').innerHTML='<b>'+esc(d.commerce?.trade_name||'')+'</b><p class="small">'+esc(d.commerce?.category||'')+'</p><p class="small">'+esc(d.commerce?.cnpj||'')+'</p><p class="small">'+esc(d.commerce?.address||'')+'</p>'}
 function startHeartbeat(){if(window._hb)clearInterval(window._hb);window._hb=setInterval(()=>{if(token)fetch(API+'/me',{headers:{Authorization:'Bearer '+token}}).catch(()=>{})},60000)}
-function startDriverLocation(){if(driverTimer)clearInterval(driverTimer);updateDriverLocation();driverTimer=setInterval(updateDriverLocation,3000);if(window._rideAvailabilityTimer)clearInterval(window._rideAvailabilityTimer);window._rideAvailabilityTimer=setInterval(()=>{if(currentUser?.role==='driver'&&currentUser?.status==='active'){loadAvailable();syncDriverActive();syncDriverDelivery()}},2000);syncDriverActive();syncDriverDelivery()}
+function startDriverLocation(){if(driverTimer)clearInterval(driverTimer);updateDriverLocation();driverTimer=setInterval(updateDriverLocation,3000);if(window._rideAvailabilityTimer)clearInterval(window._rideAvailabilityTimer);window._rideAvailabilityTimer=setInterval(()=>{if(currentUser?.role==='driver'&&currentUser?.status==='active'){loadAvailable();loadAvailableDeliveries();syncDriverActive();syncDriverDelivery()}},2000);syncDriverActive();syncDriverDelivery()}
 function updateDriverLocation(){if(currentUser?.role!=='driver'||currentUser.status!=='active'||!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(p=>api('/driver/location',{method:'POST',body:JSON.stringify({latitude:p.coords.latitude,longitude:p.coords.longitude})}).catch(()=>{}),()=>{},{enableHighAccuracy:true,maximumAge:2000,timeout:8000})}
 
 function initMap(){if(map){map.invalidateSize();return}map=L.map('map').setView([-18.5789,-46.518],13);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);locateMe()}
-function openRide(w){if(currentUser?.role!=='passenger'){alert('Somente clientes podem pedir corrida.');return}womenRide=w;$('womenNotice').style.display=w?'block':'none';$('rideDestination').value=$('homeDestination').value||'';show('ride');setTimeout(initMap,150)}
+async function openRide(w){if(currentUser?.role!=='passenger'){if(currentUser?.role==='driver'){show('driver');driverTab('rides');return}alert('Somente clientes podem pedir corrida.');return}if(!(await guardNoActiveWork()))return;womenRide=w;$('womenNotice').style.display=w?'block':'none';$('rideDestination').value=$('homeDestination').value||'';show('ride');setTimeout(initMap,150)}
 function setMapMode(m){['road','satellite','dark','traffic'].forEach(x=>$('m'+x[0].toUpperCase()+x.slice(1))?.classList.toggle('active',x===m));if(!map)return;if(m==='satellite'){if(window._sat){map.removeLayer(window._sat)}window._sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19}).addTo(map)}else if(m==='dark'){if(window._dark){map.removeLayer(window._dark)}window._dark=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:20}).addTo(map)}else if(m==='road'){if(window._sat)map.removeLayer(window._sat);if(window._dark)map.removeLayer(window._dark)}else $('mapMsg').textContent='Trânsito real será ativado quando o Google Maps estiver configurado.'}
 function locateMe(){if(!navigator.geolocation){$('mapMsg').textContent='Localização não disponível.';return}navigator.geolocation.getCurrentPosition(p=>{originCoords=[p.coords.latitude,p.coords.longitude];if(!map)initMap();if(originMarker)originMarker.setLatLng(originCoords);else originMarker=L.marker(originCoords).addTo(map).bindPopup('Você');map.setView(originCoords,15);$('mapMsg').textContent='Localização encontrada.';if(destinationCoords)drawRoute()},()=>{$('mapMsg').textContent='Permita a localização no navegador.'},{enableHighAccuracy:true,timeout:10000,maximumAge:30000})}
 async function findDestination(){const t=$('rideDestination').value.trim();if(!t)return;$('mapMsg').textContent='Buscando destino...';try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q='+encodeURIComponent(t));const d=await r.json();if(!d.length)throw 0;destinationCoords=[Number(d[0].lat),Number(d[0].lon)];if(destinationMarker)destinationMarker.setLatLng(destinationCoords);else destinationMarker=L.marker(destinationCoords).addTo(map).bindPopup('Destino');map.setView(destinationCoords,14);await drawRoute()}catch{$('mapMsg').textContent='Destino não encontrado.'}}
@@ -66,6 +79,7 @@ async function requestRide(){
   const destination=$('rideDestination').value.trim();
   const distance=parseFloat(($('distanceValue').textContent||'0').replace(',','.'));
   if(!destination||!Number.isFinite(distance)||distance<=0){$('rideMsg').textContent='Informe o destino e calcule a rota.';return;}
+  if(!(await guardNoActiveWork()))return;
   $('rideMsg').textContent='Solicitando...';
   if(!originCoords&&navigator.geolocation){try{const p=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,timeout:5000,maximumAge:10000}));originCoords=[p.coords.latitude,p.coords.longitude];}catch{}}
   const payload={destination,distanceKm:Number(distance.toFixed(2)),womenOnly:womenRide,origin:'Minha localização',originLat:originCoords?.[0]??null,originLng:originCoords?.[1]??null};
@@ -120,6 +134,27 @@ async function updatePassengerLiveMap(){
   }
 }
 
+async function refreshPassengerRide(){
+  if(!currentRide)return false;
+  try{
+    const d=await api('/rides/'+currentRide.id+'/state');
+    if(!d.ride)return false;
+    const previous=JSON.stringify({status:currentRide.status,driver:currentRide.driver_id,lat:currentRide.driver_latitude,lng:currentRide.driver_longitude});
+    currentRide=d.ride;
+    const next=JSON.stringify({status:currentRide.status,driver:currentRide.driver_id,lat:currentRide.driver_latitude,lng:currentRide.driver_longitude});
+    const stateChanged=previous!==next;
+    if(stateChanged){
+      renderTripCard();
+      if(currentRide.status==='accepted'){
+        try{navigator.vibrate?.([80,50,80])}catch{}
+      }
+    }else if(['accepted','arrived','started'].includes(String(currentRide.status))){
+      updatePassengerLiveMap();
+    }
+    if(['finished','cancelled'].includes(String(currentRide.status)))stopPassengerRidePolling();
+    return true;
+  }catch{return false}
+}
 function startPassengerRidePolling(){
   if(window._passengerRideTimer)clearInterval(window._passengerRideTimer);
   window._passengerRideTimer=setInterval(async()=>{
@@ -132,7 +167,22 @@ async function renderTrip(){if(!currentRide)return;await refreshPassengerRide();
 function initRadar(){if(radarMap){radarMap.invalidateSize();return}radarMap=L.map('radarMap').setView(originCoords||[-18.5789,-46.518],14);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(radarMap)}
 async function loadRadar(){if(!currentRide||currentRide.status!=='searching'||!originCoords)return;initRadar();try{const d=await api('/drivers/radar?lat='+originCoords[0]+'&lng='+originCoords[1]);$('radarTitle').textContent=d.drivers.length?d.drivers.length+' motorista(s) próximos':'Procurando motorista...';$('radarDrivers').innerHTML=d.drivers.map(x=>'<div class="driver-card" style="display:flex;gap:10px;align-items:center">'+(x.profile_photo_path?'<img src="'+esc(x.profile_photo_path)+'" style="width:46px;height:46px;border-radius:50%;object-fit:cover">':'<div style="font-size:32px">🏍️</div>')+'<div><b>'+esc(x.name)+'</b><div class="small">'+Number(x.distance_km).toFixed(1)+' km · ~'+x.eta_min+' min · '+esc(x.vehicle_model||'Moto')+'</div></div></div>').join('')||'<p class="muted">Nenhum motorista próximo ainda.</p>'}catch{}}
 function startRadar(){if(radarTimer)clearInterval(radarTimer);$('radarCard').style.display='block';loadRadar();radarTimer=setInterval(()=>{if(currentRide?.status==='searching')loadRadar()},5000)}function stopRadar(){if(radarTimer)clearInterval(radarTimer);radarTimer=null;$('radarCard').style.display='none'}
-async function cancelRide(){if(!currentRide)return;if(!confirm('Cancelar corrida?'))return;try{const d=await api('/rides/'+currentRide.id+'/cancel',{method:'POST',body:'{}'});currentRide=d.ride;stopRadar();await renderTrip()}catch(e){alert(e.message)}}
+async function cancelRide(){
+  if(!currentRide)return;
+  if(!confirm('Cancelar corrida?'))return;
+  const id=currentRide.id;
+  try{
+    const d=await api('/rides/'+id+'/cancel',{method:'POST',body:'{}'});
+    currentRide=d.ride;
+    stopRadar();
+    stopPassengerRidePolling();
+    renderTripCard();
+    try{navigator.vibrate?.([120])}catch{}
+  }catch(e){
+    await refreshPassengerRide();
+    alert(e.message||'Não foi possível cancelar a corrida. Tente novamente.');
+  }
+}
 async function loadAvailable(){
   if(currentUser?.role!=='driver')return;
   try{
@@ -144,8 +194,35 @@ async function loadAvailable(){
     }).join(''):'<p class="muted">Nenhuma corrida disponível.</p>';
   }catch(e){$('available').textContent=e.message}
 }
-async function acceptRide(id){try{const d=await api('/rides/'+id+'/accept',{method:'POST',body:'{}'});currentRide=d.ride;renderDriverActive();loadAvailable()}catch(e){alert(e.message)}}
-async function syncDriverActive(){if(currentUser?.role!=='driver'||currentUser?.status!=='active')return;try{const d=await api('/rides/active');const found=(d.rides||[]).find(r=>Number(r.driver_id)===Number(currentUser.id)&&['accepted','arrived','started','cancelled'].includes(String(r.status)));if(found){currentRide=found;renderDriverActive();if(found.status==='cancelled'&&window._cancelNoticeTimer==null){window._cancelNoticeTimer=setTimeout(()=>{if(currentRide?.status==='cancelled'){currentRide=null;renderDriverActive()}window._cancelNoticeTimer=null},10000)}}}catch{}}
+async function acceptRide(id){const w=await getActiveWork();if(w.ride||w.order){showActiveWorkModal(w);return}try{const d=await api('/rides/'+id+'/accept',{method:'POST',body:'{}'});currentRide=d.ride;renderDriverActive();loadAvailable();driverTab('rides');setTimeout(()=>document.getElementById('driverActive')?.scrollIntoView({behavior:'smooth',block:'center'}),100)}catch(e){alert(e.message)}}
+async function syncDriverActive(){
+  if(currentUser?.role!=='driver'||currentUser?.status!=='active')return;
+  try{
+    const d=await api('/rides/active');
+    const found=(d.rides||[]).find(r=>Number(r.driver_id)===Number(currentUser.id)&&['accepted','arrived','started','cancelled'].includes(String(r.status)));
+    if(!found){if(currentRide?.driver_id===currentUser.id&&['accepted','arrived','started','cancelled'].includes(String(currentRide.status))){currentRide=null;renderDriverActive()}return;}
+    const before=JSON.stringify({id:currentRide?.id,status:currentRide?.status,driver:currentRide?.driver_id,origin:currentRide?.origin,destination:currentRide?.destination});
+    const after=JSON.stringify({id:found.id,status:found.status,driver:found.driver_id,origin:found.origin,destination:found.destination});
+    currentRide=found;
+    if(before!==after){
+      await renderDriverActive();
+      try{navigator.vibrate?.([80,50,80])}catch{}
+    }else if(['accepted','arrived','started'].includes(String(found.status))){
+      updateDriverOwnMapPosition();
+    }
+    if(found.status==='cancelled'&&window._cancelNoticeTimer==null){
+      window._cancelNoticeTimer=setTimeout(()=>{if(currentRide?.status==='cancelled'){currentRide=null;renderDriverActive()}window._cancelNoticeTimer=null},10000)
+    }
+  }catch{}
+}
+async function updateDriverOwnMapPosition(){
+  if(!driverMap||!currentRide)return;
+  try{
+    const here=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(p=>resolve([p.coords.latitude,p.coords.longitude]),reject,{enableHighAccuracy:true,timeout:5000,maximumAge:3000}));
+    if(window._driverHereMarker)window._driverHereMarker.setLatLng(here);
+    else window._driverHereMarker=L.marker(here).addTo(driverMap).bindPopup('Você');
+  }catch{}
+}
 
 async function geocodeText(text){
   try{
@@ -244,7 +321,7 @@ async function showDeliveryDriverRoute(o){
     try{const u='https://router.project-osrm.org/route/v1/driving/'+here[1]+','+here[0]+';'+target[1]+','+target[0]+'?overview=full&geometries=geojson';const d=await fetch(u).then(r=>r.json());if(d.routes?.[0]){if(window.deliveryRouteLayer)window.deliveryDriverMap.removeLayer(window.deliveryRouteLayer);window.deliveryRouteLayer=L.geoJSON(d.routes[0].geometry,{style:{weight:6}}).addTo(window.deliveryDriverMap);window.deliveryDriverMap.fitBounds(window.deliveryRouteLayer.getBounds().pad(.15))}}catch{}
   }
 }
-async function acceptDelivery(id){try{const d=await api('/orders/'+id+'/accept',{method:'POST',body:'{}'});window.currentDelivery=d.order;await renderDriverDelivery(d.order);loadAvailableDeliveries()}catch(e){alert(e.message)}}
+async function acceptDelivery(id){const w=await getActiveWork();if(w.ride||w.order){showActiveWorkModal(w);return}try{const d=await api('/orders/'+id+'/accept',{method:'POST',body:'{}'});window.currentDelivery=d.order;await renderDriverDelivery(d.order);loadAvailableDeliveries();driverTab('deliveries');setTimeout(()=>document.getElementById('driverDeliveryActive')?.scrollIntoView({behavior:'smooth',block:'center'}),100)}catch(e){const w2=await getActiveWork();if(w2.ride||w2.order)showActiveWorkModal(w2);else alert(e.message)}}
 async function startDelivery(id){try{const d=await api('/orders/'+id+'/start',{method:'POST',body:'{}'});window.currentDelivery=d.order;await renderDriverDelivery(d.order)}catch(e){alert(e.message)}}
 async function deliveryAction(a,id){try{const d=await api('/orders/'+id+'/'+a,{method:'POST',body:'{}'});window.currentDelivery=d.order;await renderDriverDelivery(d.order);loadAvailableDeliveries();if(a==='deliver'){window.currentDelivery=null;$('driverDeliveryActive').innerHTML='<p class="ok">✅ Entrega concluída.</p>'}}catch(e){alert(e.message)}}
 async function showHomeByRole(){if(currentUser?.role==='driver'){show('driver');driverTab('rides');loadAvailable();syncDriverActive();syncDriverDelivery()}else if(currentUser?.role==='passenger')show('home');else show('commerce')}
@@ -258,7 +335,7 @@ async function buyProduct(pid,cid){try{const kmInput=document.getElementById('km
 async function useDeliveryLocation(){if(!navigator.geolocation){$('deliveryPickup').textContent='Localização não disponível no navegador.';return}try{const pos=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,timeout:10000,maximumAge:30000}));deliveryPickupCoords=[pos.coords.latitude,pos.coords.longitude];let address='Minha localização atual';try{const r=await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+deliveryPickupCoords[0]+'&lon='+deliveryPickupCoords[1]+'&zoom=18&addressdetails=1');const d=await r.json();address=d.display_name||address}catch{}$('deliveryPickup').innerHTML='📍 <b>Localização automática encontrada</b><br><span class="small">'+esc(address)+'</span>';$('deliveryPickup').dataset.address=address;$('deliveryQuote').textContent='Agora informe o destino.'}catch(e){$('deliveryPickup').textContent='Não foi possível obter sua localização. Permita a localização no navegador.'}}
 async function findDeliveryDestination(){const address=$('deliveryAddress').value.trim();if(!address){$('deliveryQuote').textContent='Informe o endereço de entrega.';return}if(!deliveryPickupCoords){await useDeliveryLocation();if(!deliveryPickupCoords)return}try{$('deliveryQuote').textContent='Calculando rota...';const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q='+encodeURIComponent(address));const geo=await r.json();if(!geo[0])throw new Error('Destino não encontrado.');deliveryDestinationCoords=[Number(geo[0].lat),Number(geo[0].lon)];const route=await fetch('https://router.project-osrm.org/route/v1/driving/'+deliveryPickupCoords[1]+','+deliveryPickupCoords[0]+';'+deliveryDestinationCoords[1]+','+deliveryDestinationCoords[0]+'?overview=false').then(x=>x.json());if(!route.routes?.[0])throw new Error('Não foi possível calcular a distância.');const km=route.routes[0].distance/1000;$('deliveryKm').value=km.toFixed(1);await quoteDelivery()}catch(e){$('deliveryQuote').textContent=e.message||'Não foi possível calcular a entrega.'}}
 async function quoteDelivery(){const km=Number($('deliveryKm').value||0);if(!km){$('deliveryQuote').textContent='Calcule o destino primeiro.';return}try{const d=await api('/delivery/quote?km='+km);$('deliveryQuote').innerHTML='🚚 Taxa estimada: <span class="price">R$ '+d.deliveryFee.toFixed(2).replace('.',',')+'</span><br><span class="small">'+km.toFixed(1)+' km · coleta pela sua localização automática</span>'}catch(e){$('deliveryQuote').textContent=e.message}}
-async function createPackageDelivery(){const type=$('packageType').value,desc=$('packageDescription').value.trim(),address=$('deliveryAddress').value.trim(),km=Number($('deliveryKm').value||0),pickupAddress=$('deliveryPickup').dataset.address||'Minha localização atual';if(!type||!desc){$('deliveryStatus').textContent='Informe o tipo e descreva a encomenda.';return}if(!deliveryPickupCoords||!deliveryDestinationCoords||!address||!km){$('deliveryStatus').textContent='Use sua localização e busque o destino antes de solicitar.';return}try{const d=await api('/package-deliveries',{method:'POST',body:JSON.stringify({packageType:type,packageDescription:desc,pickupAddress,pickupLat:deliveryPickupCoords[0],pickupLng:deliveryPickupCoords[1],deliveryAddress:address,deliveryLat:deliveryDestinationCoords[0],deliveryLng:deliveryDestinationCoords[1],deliveryKm:km})});packageDeliveryId=d.order.id;$('deliveryStatus').innerHTML='🚚 <b>BUSCANDO ENTREGADOR...</b><br><span class="small">A encomenda já está disponível para os entregadores próximos.</span>';startPackageDeliveryPolling()}catch(e){$('deliveryStatus').textContent=e.message}}
+async function createPackageDelivery(){const type=$('packageType').value,desc=$('packageDescription').value.trim(),address=$('deliveryAddress').value.trim(),km=Number($('deliveryKm').value||0),pickupAddress=$('deliveryPickup').dataset.address||'Minha localização atual';if(!type||!desc){$('deliveryStatus').textContent='Informe o tipo e descreva a encomenda.';return}if(!deliveryPickupCoords||!deliveryDestinationCoords||!address||!km){$('deliveryStatus').textContent='Use sua localização e busque o destino antes de solicitar.';return}if(!(await guardNoActiveWork()))return;try{const d=await api('/package-deliveries',{method:'POST',body:JSON.stringify({packageType:type,packageDescription:desc,pickupAddress,pickupLat:deliveryPickupCoords[0],pickupLng:deliveryPickupCoords[1],deliveryAddress:address,deliveryLat:deliveryDestinationCoords[0],deliveryLng:deliveryDestinationCoords[1],deliveryKm:km})});packageDeliveryId=d.order.id;$('deliveryStatus').innerHTML='🚚 <b>BUSCANDO ENTREGADOR...</b><br><span class="small">A encomenda já está disponível para os entregadores próximos.</span>';startPackageDeliveryPolling()}catch(e){$('deliveryStatus').textContent=e.message}}
 function startPackageDeliveryPolling(){if(window._packageDeliveryTimer)clearInterval(window._packageDeliveryTimer);window._packageDeliveryTimer=setInterval(async()=>{if(!packageDeliveryId)return;try{const d=await api('/package-deliveries/'+packageDeliveryId);const o=d.order;const text=o.status==='searching_driver'?'🚚 <b>BUSCANDO ENTREGADOR...</b>':o.status==='driver_accepted'?'🟢 <b>ENTREGADOR ACEITOU</b><br>'+esc(o.driver_name||'Entregador'):'📦 <b>'+esc(o.status)+'</b>';$('deliveryStatus').innerHTML=text;if(['delivered','cancelled'].includes(String(o.status))){clearInterval(window._packageDeliveryTimer);window._packageDeliveryTimer=null}}catch{}} ,2500)}
 async function saveProfile(){try{await api('/me',{method:'PUT',body:JSON.stringify({address:$('profileAddress').value})});$('profileMsg').textContent='Dados salvos.'}catch(e){$('profileMsg').textContent=e.message}}async function requestPhotoChange(){if(!$('profilePhoto').files[0]){$('profileMsg').textContent='Escolha uma foto primeiro.';return}const f=new FormData();f.append('photo',$('profilePhoto').files[0]);try{const d=await api('/profile/photo-request',{method:'POST',body:f});$('profileMsg').textContent=d.message}catch(e){$('profileMsg').textContent=e.message}}
 async function sendHelp(){try{const d=await api('/help',{method:'POST',body:JSON.stringify({subject:$('helpSubject').value||'Ajuda',message:$('helpMessage').value})});$('helpMsg').textContent='Solicitação enviada #'+d.ticket.id}catch(e){$('helpMsg').textContent=e.message}}
