@@ -1,670 +1,111 @@
 require("dotenv").config();
-
-const express = require("express");
-const path = require("path");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const helmet = require("helmet");
-const cors = require("cors");
-const rateLimit = require("express-rate-limit");
-const multer = require("multer");
-const { Pool } = require("pg");
-
-const app = express();
-const PORT = process.env.PORT || 10000;
-const JWT_SECRET = process.env.JWT_SECRET;
-
-if (!process.env.DATABASE_URL) {
-  console.error("DATABASE_URL não configurada.");
-  process.exit(1);
+const express=require("express");const path=require("path");const bcrypt=require("bcryptjs");const jwt=require("jsonwebtoken");const helmet=require("helmet");const cors=require("cors");const rateLimit=require("express-rate-limit");const multer=require("multer");const {Pool}=require("pg");
+const app=express();const PORT=process.env.PORT||10000;const JWT_SECRET=process.env.JWT_SECRET;
+if(!process.env.DATABASE_URL) throw new Error("DATABASE_URL não configurada."); if(!JWT_SECRET) throw new Error("JWT_SECRET não configurado.");
+const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_URL.includes("localhost")?false:{rejectUnauthorized:false}});
+app.use(helmet({contentSecurityPolicy:false}));app.use(cors());app.use(express.json({limit:"3mb"}));app.use(express.urlencoded({extended:true}));app.use(rateLimit({windowMs:15*60*1000,max:2000,standardHeaders:true,legacyHeaders:false}));
+const upload=multer({dest:path.join(__dirname,"uploads"),limits:{fileSize:8*1024*1024}});app.use("/uploads",express.static(path.join(__dirname,"uploads")));
+async function q(sql,p=[]){return pool.query(sql,p)}
+async function initDatabase(){
+ await q(`CREATE TABLE IF NOT EXISTS users(id SERIAL PRIMARY KEY,role TEXT NOT NULL,name TEXT NOT NULL,cpf TEXT UNIQUE NOT NULL,phone TEXT,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,pix_key TEXT,gender TEXT,status TEXT NOT NULL DEFAULT 'active',phone_verified BOOLEAN NOT NULL DEFAULT FALSE,email_verified BOOLEAN NOT NULL DEFAULT FALSE,profile_photo_path TEXT,profile_photo_status TEXT NOT NULL DEFAULT 'approved',last_seen_at TIMESTAMPTZ,otp_code TEXT,otp_expires_at TIMESTAMPTZ,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+ await q(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`); await q(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK(role IN ('passenger','driver','commerce'))`);
+ await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_path TEXT`);await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT`);await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_status TEXT NOT NULL DEFAULT 'approved'`);await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ`);await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_code TEXT`);await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMPTZ`);
+ await q(`UPDATE users SET phone_verified=TRUE WHERE phone_verified=FALSE AND created_at < NOW()`);
+ await q(`CREATE TABLE IF NOT EXISTS driver_profiles(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,cnh TEXT,plate TEXT,vehicle_model TEXT,document_path TEXT,selfie_path TEXT,service_mode TEXT NOT NULL DEFAULT 'all',service_type TEXT NOT NULL DEFAULT 'both',latitude DOUBLE PRECISION,longitude DOUBLE PRECISION,last_location_at TIMESTAMPTZ,approved_at TIMESTAMPTZ)`);
+ await q(`ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS selfie_path TEXT`);
+ await q(`CREATE TABLE IF NOT EXISTS commerce_profiles(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,legal_name TEXT,trade_name TEXT,cnpj TEXT,category TEXT,address TEXT,phone TEXT,email TEXT,document_path TEXT,logo_path TEXT,approved_at TIMESTAMPTZ)`);
+ await q(`CREATE TABLE IF NOT EXISTS products(id SERIAL PRIMARY KEY,commerce_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,description TEXT,price NUMERIC(10,2) NOT NULL,category TEXT,available BOOLEAN NOT NULL DEFAULT TRUE,photo1 TEXT,photo2 TEXT,photo3 TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+ await q(`CREATE TABLE IF NOT EXISTS orders(id SERIAL PRIMARY KEY,customer_id INTEGER NOT NULL REFERENCES users(id),commerce_id INTEGER NOT NULL REFERENCES users(id),driver_id INTEGER REFERENCES users(id),subtotal NUMERIC(10,2) NOT NULL,delivery_km NUMERIC(10,2) NOT NULL DEFAULT 0,delivery_fee NUMERIC(10,2) NOT NULL DEFAULT 0,total NUMERIC(10,2) NOT NULL,platform_fee NUMERIC(10,2) NOT NULL DEFAULT 0,driver_payout NUMERIC(10,2) NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'pending',delivery_address TEXT,accepted_at TIMESTAMPTZ,picked_up_at TIMESTAMPTZ,delivered_at TIMESTAMPTZ,cancelled_at TIMESTAMPTZ,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+ await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS driver_id INTEGER REFERENCES users(id)`);
+ await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ`);
+ await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS picked_up_at TIMESTAMPTZ`);
+ await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ`);
+ await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`);
+ await q(`CREATE TABLE IF NOT EXISTS order_items(id SERIAL PRIMARY KEY,order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,product_id INTEGER NOT NULL REFERENCES products(id),quantity INTEGER NOT NULL,unit_price NUMERIC(10,2) NOT NULL)`);
+ await q(`CREATE TABLE IF NOT EXISTS rides(id SERIAL PRIMARY KEY,passenger_id INTEGER NOT NULL REFERENCES users(id),driver_id INTEGER REFERENCES users(id),origin TEXT,destination TEXT NOT NULL,distance_km NUMERIC(10,2) NOT NULL DEFAULT 0,price NUMERIC(10,2) NOT NULL DEFAULT 10,platform_fee NUMERIC(10,2) NOT NULL DEFAULT 0,driver_payout NUMERIC(10,2) NOT NULL DEFAULT 0,women_only BOOLEAN NOT NULL DEFAULT FALSE,status TEXT NOT NULL DEFAULT 'searching',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),accepted_at TIMESTAMPTZ,arrived_at TIMESTAMPTZ,started_at TIMESTAMPTZ,finished_at TIMESTAMPTZ,cancelled_at TIMESTAMPTZ,cancelled_by TEXT,driver_compensation NUMERIC(10,2) NOT NULL DEFAULT 0)`);
+ for(const s of [`ALTER TABLE rides ADD COLUMN IF NOT EXISTS origin TEXT`,`ALTER TABLE rides ADD COLUMN IF NOT EXISTS distance_km NUMERIC(10,2) NOT NULL DEFAULT 0`,`ALTER TABLE rides ADD COLUMN IF NOT EXISTS platform_fee NUMERIC(10,2) NOT NULL DEFAULT 0`,`ALTER TABLE rides ADD COLUMN IF NOT EXISTS driver_payout NUMERIC(10,2) NOT NULL DEFAULT 0`]) await q(s);
+ await q(`CREATE TABLE IF NOT EXISTS support_tickets(id SERIAL PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id),subject TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',admin_reply TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+ await q(`CREATE TABLE IF NOT EXISTS profile_change_requests(id SERIAL PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id),field_name TEXT NOT NULL,new_value TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),reviewed_at TIMESTAMPTZ)`);
+ await q(`CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)`);
+ const defaults={ride_commission_percent:process.env.RIDE_COMMISSION_PERCENT||'5',ride_base_fee:process.env.RIDE_BASE_FEE||'0',ride_per_km:process.env.RIDE_PER_KM||'1',delivery_commission_percent:process.env.DELIVERY_COMMISSION_PERCENT||'5',delivery_base_fee:process.env.DELIVERY_BASE_FEE||'5',delivery_per_km:process.env.DELIVERY_PER_KM||'1.5'};
+ for(const [k,v] of Object.entries(defaults)) await q(`INSERT INTO app_settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`,[k,v]);
+ console.log('Banco DYABY pronto.');
 }
-if (!JWT_SECRET) {
-  console.error("JWT_SECRET não configurado.");
-  process.exit(1);
+function auth(req,res,next){const h=req.headers.authorization||'';const t=h.startsWith('Bearer ')?h.slice(7):null;if(!t)return res.status(401).json({error:'Não autenticado.'});try{req.user=jwt.verify(t,JWT_SECRET);next()}catch{return res.status(401).json({error:'Sessão inválida ou expirada.'})}}
+function adminAuth(req,res,next){const h=req.headers.authorization||'';const t=h.startsWith('Bearer ')?h.slice(7):null;if(!t)return res.status(401).json({error:'Não autenticado.'});try{const d=jwt.verify(t,JWT_SECRET);if(!d.admin)throw 0;req.admin=true;next()}catch{return res.status(401).json({error:'Sessão administrativa inválida.'})}}
+function safeUser(r){return r?{id:r.id,role:r.role,name:r.name,cpf:r.cpf,phone:r.phone,email:r.email,address:r.address||null,pix_key:r.pix_key,gender:r.gender,status:r.status,phone_verified:r.phone_verified,email_verified:r.email_verified,profile_photo_path:r.profile_photo_path,profile_photo_status:r.profile_photo_status,service_mode:r.service_mode||'all'}:null}
+async function setting(key,fallback){const r=await q('SELECT value FROM app_settings WHERE key=$1',[key]);return r.rowCount?Number(r.rows[0].value):fallback}
+async function sendWhatsAppOtp(phone,code){
+ if(process.env.TWILIO_ACCOUNT_SID&&process.env.TWILIO_AUTH_TOKEN&&process.env.TWILIO_VERIFY_SERVICE_SID){
+  try{const twilio=require('twilio')(process.env.TWILIO_ACCOUNT_SID,process.env.TWILIO_AUTH_TOKEN);await twilio.verify.v2.services(process.env.TWILIO_VERIFY_SERVICE_SID).verifications.create({to:phone.startsWith('+')?phone:'+55'+phone.replace(/\D/g,''),channel:'whatsapp'});return true}catch(e){console.error('Twilio OTP:',e.message);return false}
+ }
+ return String(process.env.DEV_OTP_MODE||'false').toLowerCase()==='true';
 }
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL.includes("localhost")
-    ? false
-    : { rejectUnauthorized: false }
-});
-
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors());
-app.use(express.json({ limit: "2mb" }));
-app.use(express.urlencoded({ extended: true }));
-// Limite simples para não bloquear usuários atrás do mesmo IP/proxy do Render.
-// Em produção, recomenda-se aplicar rate limit específico nas rotas sensíveis.
-app.use(rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 2000,
-  standardHeaders: true,
-  legacyHeaders: false
-}));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-const upload = multer({
-  dest: path.join(__dirname, "uploads"),
-  limits: { fileSize: 8 * 1024 * 1024 }
-});
-
-async function q(sql, params = []) {
-  return pool.query(sql, params);
-}
-
-async function initDatabase() {
-  await q(`
-    CREATE TABLE IF NOT EXISTS users (
-      id SERIAL PRIMARY KEY,
-      role TEXT NOT NULL CHECK(role IN ('passenger','driver')),
-      name TEXT NOT NULL,
-      cpf TEXT UNIQUE NOT NULL,
-      phone TEXT,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      pix_key TEXT,
-      gender TEXT,
-      status TEXT NOT NULL DEFAULT 'active',
-      phone_verified BOOLEAN NOT NULL DEFAULT FALSE,
-      email_verified BOOLEAN NOT NULL DEFAULT FALSE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await q(`
-    CREATE TABLE IF NOT EXISTS driver_profiles (
-      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      cnh TEXT,
-      plate TEXT,
-      vehicle_model TEXT,
-      document_path TEXT,
-      service_mode TEXT NOT NULL DEFAULT 'all'
-        CHECK(service_mode IN ('all','women_only')),
-      approved_at TIMESTAMPTZ
-    )
-  `);
-
-  await q(`
-    CREATE TABLE IF NOT EXISTS rides (
-      id SERIAL PRIMARY KEY,
-      passenger_id INTEGER NOT NULL REFERENCES users(id),
-      driver_id INTEGER REFERENCES users(id),
-      destination TEXT NOT NULL,
-      price NUMERIC(10,2) NOT NULL DEFAULT 10,
-      women_only BOOLEAN NOT NULL DEFAULT FALSE,
-      status TEXT NOT NULL DEFAULT 'searching',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      accepted_at TIMESTAMPTZ,
-      arrived_at TIMESTAMPTZ,
-      started_at TIMESTAMPTZ,
-      finished_at TIMESTAMPTZ,
-      cancelled_at TIMESTAMPTZ,
-      cancelled_by TEXT,
-      driver_compensation NUMERIC(10,2) NOT NULL DEFAULT 0
-    )
-  `);
-
-  // Migrações para bancos já existentes.
-  await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gender TEXT`);
-  await q(`ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS service_mode TEXT NOT NULL DEFAULT 'all'`);
-  await q(`ALTER TABLE rides ADD COLUMN IF NOT EXISTS women_only BOOLEAN NOT NULL DEFAULT FALSE`);
-  await q(`ALTER TABLE rides ADD COLUMN IF NOT EXISTS driver_compensation NUMERIC(10,2) NOT NULL DEFAULT 0`);
-
-  console.log("Banco DYABY pronto.");
-}
-
-function auth(req, res, next) {
-  const h = req.headers.authorization || "";
-  const token = h.startsWith("Bearer ") ? h.slice(7) : null;
-  if (!token) return res.status(401).json({ error: "Não autenticado." });
-
-  try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch {
-    return res.status(401).json({ error: "Sessão inválida ou expirada." });
-  }
-}
-
-function safeUser(row) {
-  if (!row) return null;
-  return {
-    id: row.id,
-    role: row.role,
-    name: row.name,
-    cpf: row.cpf,
-    phone: row.phone,
-    email: row.email,
-    pix_key: row.pix_key,
-    gender: row.gender,
-    status: row.status,
-    phone_verified: row.phone_verified,
-    email_verified: row.email_verified,
-    service_mode: row.service_mode || "all"
-  };
-}
-
-app.get("/api/health", async (req, res) => {
-  try {
-    await q("SELECT 1");
-    res.json({ ok: true, service: "DYABY", database: "postgres" });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: "Banco indisponível." });
-  }
-});
-
-app.post("/api/auth/register", async (req, res) => {
-  try {
-    const {
-      role = "passenger",
-      name,
-      cpf,
-      phone,
-      email,
-      password,
-      gender,
-      serviceMode = "all",
-      cnh,
-      plate,
-      vehicleModel
-    } = req.body;
-
-    if (!["passenger", "driver"].includes(role))
-      return res.status(400).json({ error: "Tipo de conta inválido." });
-
-    if (!name || !cpf || !email || !password)
-      return res.status(400).json({ error: "Preencha nome, CPF, e-mail e senha." });
-
-    if (password.length < 6)
-      return res.status(400).json({ error: "A senha precisa ter pelo menos 6 caracteres." });
-
-    const cleanGender = ["female", "male", "other"].includes(gender) ? gender : null;
-    const cleanMode = serviceMode === "women_only" ? "women_only" : "all";
-
-    if (role === "driver" && cleanMode === "women_only" && cleanGender !== "female") {
-      return res.status(400).json({
-        error: "Para trabalhar somente com mulheres, o cadastro do motorista deve indicar sexo feminino."
-      });
-    }
-
-    const exists = await q(
-      "SELECT id FROM users WHERE cpf=$1 OR LOWER(email)=LOWER($2)",
-      [cpf, email]
-    );
-    if (exists.rowCount)
-      return res.status(409).json({ error: "CPF ou e-mail já cadastrado." });
-
-    const hash = await bcrypt.hash(password, 12);
-    const status = role === "driver" ? "pending" : "active";
-
-    const inserted = await q(
-      `INSERT INTO users
-       (role,name,cpf,phone,email,password_hash,gender,status)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8)
-       RETURNING *`,
-      [role, name.trim(), cpf.trim(), phone || null, email.trim().toLowerCase(), hash, cleanGender, status]
-    );
-
-    const user = inserted.rows[0];
-
-    if (role === "driver") {
-      await q(
-        `INSERT INTO driver_profiles
-         (user_id,cnh,plate,vehicle_model,service_mode)
-         VALUES($1,$2,$3,$4,$5)
-         ON CONFLICT (user_id) DO UPDATE SET
-           cnh=EXCLUDED.cnh,
-           plate=EXCLUDED.plate,
-           vehicle_model=EXCLUDED.vehicle_model,
-           service_mode=EXCLUDED.service_mode`,
-        [user.id, cnh || null, plate || null, vehicleModel || null, cleanMode]
-      );
-    }
-
-    const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
-
-    res.status(201).json({
-      token,
-      user: safeUser({ ...user, service_mode: cleanMode }),
-      message: role === "driver"
-        ? "Cadastro recebido. O motorista fica pendente até a aprovação do administrador."
-        : "Conta criada com sucesso."
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Erro ao criar cadastro." });
-  }
-});
-
-app.post("/api/auth/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password)
-      return res.status(400).json({ error: "Informe e-mail e senha." });
-
-    const result = await q(
-      `SELECT u.*, dp.service_mode
-       FROM users u
-       LEFT JOIN driver_profiles dp ON dp.user_id=u.id
-       WHERE LOWER(u.email)=LOWER($1)`,
-      [email]
-    );
-
-    if (!result.rowCount)
-      return res.status(401).json({ error: "E-mail ou senha inválidos." });
-
-    const user = result.rows[0];
-    const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) return res.status(401).json({ error: "E-mail ou senha inválidos." });
-
-    if (user.role === "driver" && user.status === "rejected")
-      return res.status(403).json({ error: "Cadastro de motorista rejeitado. Procure o suporte." });
-
-    const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, user: safeUser(user) });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Erro no login." });
-  }
-});
-
-app.get("/api/me", auth, async (req, res) => {
-  const result = await q(
-    `SELECT u.*, dp.service_mode, dp.cnh, dp.plate, dp.vehicle_model, dp.approved_at
-     FROM users u
-     LEFT JOIN driver_profiles dp ON dp.user_id=u.id
-     WHERE u.id=$1`,
-    [req.user.id]
-  );
-  if (!result.rowCount) return res.status(404).json({ error: "Usuário não encontrado." });
-
-  const row = result.rows[0];
-  res.json({
-    user: safeUser(row),
-    driver: row.role === "driver" ? {
-      cnh: row.cnh,
-      plate: row.plate,
-      vehicle_model: row.vehicle_model,
-      service_mode: row.service_mode || "all",
-      approved_at: row.approved_at
-    } : null
-  });
-});
-
-app.put("/api/me", auth, async (req, res) => {
-  try {
-    const { name, phone, pixKey } = req.body;
-    const result = await q(
-      `UPDATE users
-       SET name=COALESCE($1,name),
-           phone=COALESCE($2,phone),
-           pix_key=COALESCE($3,pix_key)
-       WHERE id=$4
-       RETURNING *`,
-      [name || null, phone || null, pixKey || null, req.user.id]
-    );
-    res.json({ user: safeUser(result.rows[0]) });
-  } catch {
-    res.status(500).json({ error: "Não foi possível atualizar o perfil." });
-  }
-});
-
-app.put("/api/driver/preferences", auth, async (req, res) => {
-  try {
-    if (req.user.role !== "driver")
-      return res.status(403).json({ error: "Somente motoristas/entregadores." });
-
-    const mode = req.body.serviceMode === "women_only" ? "women_only" : "all";
-
-    const u = await q("SELECT gender FROM users WHERE id=$1", [req.user.id]);
-    if (!u.rowCount) return res.status(404).json({ error: "Usuário não encontrado." });
-
-    if (mode === "women_only" && u.rows[0].gender !== "female")
-      return res.status(400).json({
-        error: "Somente motoristas do sexo feminino podem selecionar atendimento somente para mulheres."
-      });
-
-    await q(
-      `INSERT INTO driver_profiles(user_id,service_mode)
-       VALUES($1,$2)
-       ON CONFLICT(user_id) DO UPDATE SET service_mode=EXCLUDED.service_mode`,
-      [req.user.id, mode]
-    );
-
-    res.json({ ok: true, serviceMode: mode });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Não foi possível salvar a preferência." });
-  }
-});
-
-app.post("/api/driver/documents", auth, upload.fields([
-  { name: "selfie", maxCount: 1 },
-  { name: "cnh", maxCount: 1 },
-  { name: "vehicleDocument", maxCount: 1 }
-]), async (req, res) => {
-  try {
-    if (req.user.role !== "driver")
-      return res.status(403).json({ error: "Somente motoristas/entregadores." });
-
-    const { cnh, plate, vehicleModel } = req.body;
-    const doc = req.files?.vehicleDocument?.[0]?.path || null;
-
-    await q(
-      `INSERT INTO driver_profiles(user_id,cnh,plate,vehicle_model,document_path)
-       VALUES($1,$2,$3,$4,$5)
-       ON CONFLICT(user_id) DO UPDATE SET
-         cnh=EXCLUDED.cnh,
-         plate=EXCLUDED.plate,
-         vehicle_model=EXCLUDED.vehicle_model,
-         document_path=COALESCE(EXCLUDED.document_path,driver_profiles.document_path)`,
-      [req.user.id, cnh || null, plate || null, vehicleModel || null, doc]
-    );
-
-    res.json({ ok: true, message: "Documentos recebidos para análise." });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Erro ao enviar documentos." });
-  }
-});
-
-// Corridas
-app.post("/api/rides", auth, async (req, res) => {
-  try {
-    if (req.user.role !== "passenger")
-      return res.status(403).json({ error: "Somente passageiros podem pedir corrida." });
-
-    const destination = String(req.body.destination || "").trim();
-    const price = Number(req.body.price || 10);
-    const womenOnly = Boolean(req.body.womenOnly);
-
-    if (!destination) return res.status(400).json({ error: "Informe o destino." });
-    if (!Number.isFinite(price) || price <= 0)
-      return res.status(400).json({ error: "Preço inválido." });
-
-    const result = await q(
-      `INSERT INTO rides(passenger_id,destination,price,women_only,status)
-       VALUES($1,$2,$3,$4,'searching')
-       RETURNING *`,
-      [req.user.id, destination, price, womenOnly]
-    );
-
-    res.status(201).json({ ride: result.rows[0] });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Não foi possível pedir a corrida." });
-  }
-});
-
-app.get("/api/rides/active", auth, async (req, res) => {
-  const result = await q(
-    `SELECT r.*, p.name AS passenger_name, d.name AS driver_name
-     FROM rides r
-     JOIN users p ON p.id=r.passenger_id
-     LEFT JOIN users d ON d.id=r.driver_id
-     WHERE (r.passenger_id=$1 OR r.driver_id=$1)
-       AND r.status IN ('searching','accepted','arrived','started')
-     ORDER BY r.created_at DESC`,
-    [req.user.id]
-  );
-  res.json({ rides: result.rows });
-});
-
-app.get("/api/rides/available", auth, async (req, res) => {
-  try {
-    if (req.user.role !== "driver")
-      return res.status(403).json({ error: "Somente motoristas." });
-
-    const result = await q(
-      `SELECT r.*, p.name AS passenger_name
-       FROM rides r
-       JOIN users p ON p.id=r.passenger_id
-       JOIN users d ON d.id=$1
-       LEFT JOIN driver_profiles dp ON dp.user_id=d.id
-       WHERE r.status='searching'
-         AND r.driver_id IS NULL
-         AND d.status='active'
-         AND (
-           r.women_only = FALSE
-           OR (d.gender='female' AND COALESCE(dp.service_mode,'all') IN ('all','women_only'))
-         )
-         AND (
-           COALESCE(dp.service_mode,'all')='all'
-           OR (COALESCE(dp.service_mode,'all')='women_only' AND r.women_only=TRUE)
-         )
-       ORDER BY r.created_at DESC`,
-      [req.user.id]
-    );
-
-    res.json({ rides: result.rows });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Erro ao buscar corridas." });
-  }
-});
-
-app.get("/api/rides/:id", auth, async (req, res) => {
-  const result = await q(
-    `SELECT r.*, p.name AS passenger_name, d.name AS driver_name
-     FROM rides r
-     JOIN users p ON p.id=r.passenger_id
-     LEFT JOIN users d ON d.id=r.driver_id
-     WHERE r.id=$1`,
-    [req.params.id]
-  );
-  if (!result.rowCount) return res.status(404).json({ error: "Corrida não encontrada." });
-
-  const ride = result.rows[0];
-  if (ride.passenger_id !== req.user.id && ride.driver_id !== req.user.id)
-    return res.status(403).json({ error: "Acesso negado." });
-
-  res.json({ ride });
-});
-
-app.post("/api/rides/:id/accept", auth, async (req, res) => {
-  try {
-    if (req.user.role !== "driver")
-      return res.status(403).json({ error: "Somente motoristas." });
-
-    const result = await q(
-      `UPDATE rides r
-       SET driver_id=$1, status='accepted', accepted_at=NOW()
-       FROM users d
-       LEFT JOIN driver_profiles dp ON dp.user_id=d.id
-       WHERE r.id=$2
-         AND r.status='searching'
-         AND r.driver_id IS NULL
-         AND d.id=$1
-         AND d.status='active'
-         AND (
-           r.women_only=FALSE
-           OR (d.gender='female' AND COALESCE(dp.service_mode,'all') IN ('all','women_only'))
-         )
-         AND (
-           COALESCE(dp.service_mode,'all')='all'
-           OR (COALESCE(dp.service_mode,'all')='women_only' AND r.women_only=TRUE)
-         )
-       RETURNING r.*`,
-      [req.user.id, req.params.id]
-    );
-
-    if (!result.rowCount)
-      return res.status(409).json({ error: "Corrida indisponível para este motorista." });
-
-    res.json({ ride: result.rows[0] });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Não foi possível aceitar a corrida." });
-  }
-});
-
-app.post("/api/rides/:id/arrive", auth, async (req, res) => {
-  const result = await q(
-    `UPDATE rides SET status='arrived', arrived_at=NOW()
-     WHERE id=$1 AND driver_id=$2 AND status='accepted'
-     RETURNING *`,
-    [req.params.id, req.user.id]
-  );
-  if (!result.rowCount) return res.status(409).json({ error: "Ação inválida." });
-  res.json({ ride: result.rows[0] });
-});
-
-app.post("/api/rides/:id/start", auth, async (req, res) => {
-  const result = await q(
-    `UPDATE rides SET status='started', started_at=NOW()
-     WHERE id=$1 AND driver_id=$2 AND status IN ('accepted','arrived')
-     RETURNING *`,
-    [req.params.id, req.user.id]
-  );
-  if (!result.rowCount) return res.status(409).json({ error: "Ação inválida." });
-  res.json({ ride: result.rows[0] });
-});
-
-app.post("/api/rides/:id/finish", auth, async (req, res) => {
-  const result = await q(
-    `UPDATE rides SET status='finished', finished_at=NOW()
-     WHERE id=$1 AND driver_id=$2 AND status='started'
-     RETURNING *`,
-    [req.params.id, req.user.id]
-  );
-  if (!result.rowCount) return res.status(409).json({ error: "Ação inválida." });
-  res.json({ ride: result.rows[0] });
-});
-
-app.post("/api/rides/:id/cancel", auth, async (req, res) => {
-  const current = await q("SELECT * FROM rides WHERE id=$1", [req.params.id]);
-  if (!current.rowCount) return res.status(404).json({ error: "Corrida não encontrada." });
-
-  const ride = current.rows[0];
-  // Normalize IDs because JWT/database clients can represent the same integer
-  // as a number or string. This prevents a valid owner from receiving 403.
-  const userId = Number(req.user.id);
-  const passengerId = Number(ride.passenger_id);
-  const driverId = ride.driver_id == null ? null : Number(ride.driver_id);
-  const isPassenger = passengerId === userId;
-  const isDriver = driverId === userId;
-
-  if (!isPassenger && !isDriver)
-    return res.status(403).json({ error: "Acesso negado: esta corrida não pertence à sua conta." });
-
-  if (!["searching","accepted","arrived","started"].includes(ride.status))
-    return res.status(409).json({ error: "Essa corrida não pode mais ser cancelada." });
-
-  let compensation = 0;
-
-  if (isPassenger && ride.status === "started" && ride.started_at) {
-    const minutes = (Date.now() - new Date(ride.started_at).getTime()) / 60000;
-    if (minutes >= 3) compensation = 5;
-  }
-
-  const result = await q(
-    `UPDATE rides
-     SET status='cancelled',
-         cancelled_at=NOW(),
-         cancelled_by=$1,
-         driver_compensation=$2
-     WHERE id=$3
-       AND status IN ('searching','accepted','arrived','started')
-       AND (passenger_id=$4 OR driver_id=$4)
-     RETURNING *`,
-    [isPassenger ? "passenger" : "driver", compensation, req.params.id, userId]
-  );
-
-  if (!result.rowCount)
-    return res.status(409).json({ error: "A corrida mudou de estado. Atualize e tente novamente." });
-
-  res.json({
-    ride: result.rows[0],
-    compensation,
-    message: compensation
-      ? "Corrida cancelada. Foi registrada uma compensação de R$ 5,00 para o motorista."
-      : "Corrida cancelada."
-  });
-});
-
-// Administração
-app.post("/api/admin/login", async (req, res) => {
-  const { email, password } = req.body;
-  if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD)
-    return res.status(503).json({ error: "Admin não configurado no servidor." });
-
-  if (
-    String(email).toLowerCase() !== String(process.env.ADMIN_EMAIL).toLowerCase() ||
-    String(password) !== String(process.env.ADMIN_PASSWORD)
-  ) {
-    return res.status(401).json({ error: "Credenciais administrativas inválidas." });
-  }
-
-  const token = jwt.sign({ admin: true }, JWT_SECRET, { expiresIn: "8h" });
-  res.json({ token });
-});
-
-function adminAuth(req, res, next) {
-  const h = req.headers.authorization || "";
-  const token = h.startsWith("Bearer ") ? h.slice(7) : null;
-  if (!token) return res.status(401).json({ error: "Não autenticado." });
-  try {
-    const data = jwt.verify(token, JWT_SECRET);
-    if (!data.admin) throw new Error();
-    req.admin = true;
-    next();
-  } catch {
-    res.status(401).json({ error: "Sessão administrativa inválida." });
-  }
-}
-
-app.get("/api/admin/drivers", adminAuth, async (req, res) => {
-  const result = await q(
-    `SELECT u.id,u.name,u.cpf,u.phone,u.email,u.gender,u.status,u.created_at,
-            dp.cnh,dp.plate,dp.vehicle_model,dp.service_mode,dp.approved_at
-     FROM users u
-     JOIN driver_profiles dp ON dp.user_id=u.id
-     WHERE u.role='driver'
-     ORDER BY u.created_at DESC`
-  );
-  res.json({ drivers: result.rows });
-});
-
-app.post("/api/admin/drivers/:id/approve", adminAuth, async (req, res) => {
-  const result = await q(
-    `UPDATE users SET status='active' WHERE id=$1 AND role='driver' RETURNING id,name,status`,
-    [req.params.id]
-  );
-  if (!result.rowCount) return res.status(404).json({ error: "Motorista não encontrado." });
-
-  await q(
-    `UPDATE driver_profiles SET approved_at=NOW() WHERE user_id=$1`,
-    [req.params.id]
-  );
-
-  res.json({ driver: result.rows[0] });
-});
-
-app.post("/api/admin/drivers/:id/reject", adminAuth, async (req, res) => {
-  const result = await q(
-    `UPDATE users SET status='rejected' WHERE id=$1 AND role='driver' RETURNING id,name,status`,
-    [req.params.id]
-  );
-  if (!result.rowCount) return res.status(404).json({ error: "Motorista não encontrado." });
-  res.json({ driver: result.rows[0] });
-});
-
-// Configuração pública do mapa. A chave Google deve ser restrita por domínio/app no Google Cloud.
-app.get("/api/config/maps", (req, res) => {
-  res.json({ googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || "" });
-});
-
-// Frontend
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
-});
-
-initDatabase()
-  .then(() => {
-    app.listen(PORT, () => console.log(`DYABY rodando na porta ${PORT}`));
-  })
-  .catch((err) => {
-    console.error("Falha ao iniciar banco:", err);
-    process.exit(1);
-  });
+app.get('/api/version',(req,res)=>res.json({version:'2.1.0-master',build:'cliente-motorista-comercio-radar-entregas'}));
+app.get('/api/health',async(req,res)=>{try{await q('SELECT 1');res.json({ok:true,service:'DYABY',database:'postgres'})}catch{res.status(500).json({ok:false})}});
+app.post('/api/auth/register',async(req,res)=>{try{
+ const {role='passenger',name,cpf,phone,email,password,gender,serviceMode='all',cnh,plate,vehicleModel,commerce}=req.body;
+ if(!['passenger','driver','commerce'].includes(role))return res.status(400).json({error:'Tipo de conta inválido.'});
+ if(!name||!cpf||!email||!password||!phone)return res.status(400).json({error:'Preencha nome, CPF, WhatsApp, e-mail e senha.'});if(password.length<6)return res.status(400).json({error:'A senha precisa ter pelo menos 6 caracteres.'});
+ const ex=await q('SELECT id FROM users WHERE cpf=$1 OR LOWER(email)=LOWER($2)',[cpf,email]);if(ex.rowCount)return res.status(409).json({error:'CPF ou e-mail já cadastrado.'});
+ const genderOk=['female','male','other'].includes(gender)?gender:null;const status=role==='passenger'?'active':'pending';const hash=await bcrypt.hash(password,12);
+ const u=(await q(`INSERT INTO users(role,name,cpf,phone,email,password_hash,gender,status,last_seen_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NOW()) RETURNING *`,[role,name.trim(),cpf.trim(),phone.trim(),email.trim().toLowerCase(),hash,genderOk,status])).rows[0];
+ if(role==='driver') await q(`INSERT INTO driver_profiles(user_id,cnh,plate,vehicle_model,service_mode,service_type) VALUES($1,$2,$3,$4,$5,'both')`,[u.id,cnh||null,plate||null,vehicleModel||null,serviceMode==='women_only'?'women_only':'all']);
+ if(role==='commerce'){const c=commerce||{};await q(`INSERT INTO commerce_profiles(user_id,legal_name,trade_name,cnpj,category,address,phone,email) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[u.id,c.legalName||null,c.tradeName||name,c.cnpj||null,c.category||'Comércio',c.address||null,phone,email]);}
+ const code=String(Math.floor(100000+Math.random()*900000));await q(`UPDATE users SET otp_code=$1,otp_expires_at=NOW()+INTERVAL '10 minutes' WHERE id=$2`,[code,u.id]);const sent=await sendWhatsAppOtp(phone,code);
+ const token=jwt.sign({id:u.id,role:u.role},JWT_SECRET,{expiresIn:'7d'});res.status(201).json({token,user:safeUser(u),needsVerification:true,otpSent:sent,devCode:(!sent&&String(process.env.DEV_OTP_MODE||'false').toLowerCase()==='true')?code:undefined,message:role==='passenger'?'Conta criada. Confirme seu WhatsApp.':role==='driver'?'Cadastro de motorista criado e enviado para análise. Confirme seu WhatsApp e aguarde aprovação.':'Cadastro do comércio criado. Confirme seu WhatsApp e aguarde aprovação.'});
+}catch(e){console.error(e);res.status(500).json({error:'Erro ao criar cadastro.'})}});
+app.post('/api/auth/verify-whatsapp',auth,async(req,res)=>{try{const code=String(req.body.code||'').trim();const r=await q(`SELECT id,otp_code,otp_expires_at FROM users WHERE id=$1`,[req.user.id]);if(!r.rowCount)return res.status(404).json({error:'Usuário não encontrado.'});const u=r.rows[0];if(u.otp_code===''){return res.json({ok:true,phoneVerified:true})}if(!code||code!==u.otp_code||new Date(u.otp_expires_at)<new Date())return res.status(400).json({error:'Código inválido ou expirado.'});await q(`UPDATE users SET phone_verified=TRUE,otp_code=NULL,otp_expires_at=NULL WHERE id=$1`,[req.user.id]);res.json({ok:true,phoneVerified:true})}catch{res.status(500).json({error:'Não foi possível verificar o WhatsApp.'})}});
+app.post('/api/auth/resend-otp',auth,async(req,res)=>{const r=await q('SELECT phone FROM users WHERE id=$1',[req.user.id]);if(!r.rowCount)return res.status(404).json({error:'Usuário não encontrado.'});const code=String(Math.floor(100000+Math.random()*900000));await q(`UPDATE users SET otp_code=$1,otp_expires_at=NOW()+INTERVAL '10 minutes' WHERE id=$2`,[code,req.user.id]);const sent=await sendWhatsAppOtp(r.rows[0].phone,code);res.json({ok:true,sent,devCode:(!sent&&String(process.env.DEV_OTP_MODE||'false').toLowerCase()==='true')?code:undefined})});
+app.post('/api/auth/login',async(req,res)=>{try{const {email,password}=req.body;const r=await q(`SELECT u.*,dp.service_mode,dp.cnh,dp.plate,dp.vehicle_model,dp.approved_at,cp.trade_name FROM users u LEFT JOIN driver_profiles dp ON dp.user_id=u.id LEFT JOIN commerce_profiles cp ON cp.user_id=u.id WHERE LOWER(u.email)=LOWER($1)`,[email]);if(!r.rowCount)return res.status(401).json({error:'E-mail ou senha inválidos.'});const u=r.rows[0];if(!await bcrypt.compare(password,u.password_hash))return res.status(401).json({error:'E-mail ou senha inválidos.'});if(u.role==='driver'&&u.status==='rejected')return res.status(403).json({error:'Cadastro de motorista rejeitado. Procure o suporte.'});if(u.role==='commerce'&&u.status==='rejected')return res.status(403).json({error:'Cadastro de comércio rejeitado. Procure o suporte.'});await q('UPDATE users SET last_seen_at=NOW() WHERE id=$1',[u.id]);const token=jwt.sign({id:u.id,role:u.role},JWT_SECRET,{expiresIn:'7d'});res.json({token,user:safeUser(u),driver:u.role==='driver'?{cnh:u.cnh,plate:u.plate,vehicle_model:u.vehicle_model,service_mode:u.service_mode,approved_at:u.approved_at}:null,commerce:u.role==='commerce'?{trade_name:u.trade_name}:null,needsVerification:!u.phone_verified})}catch(e){console.error(e);res.status(500).json({error:'Erro no login.'})}});
+app.get('/api/me',auth,async(req,res)=>{const r=await q(`SELECT u.*,dp.service_mode,dp.cnh,dp.plate,dp.vehicle_model,dp.approved_at,cp.legal_name,cp.trade_name,cp.cnpj,cp.category,cp.address AS commerce_address FROM users u LEFT JOIN driver_profiles dp ON dp.user_id=u.id LEFT JOIN commerce_profiles cp ON cp.user_id=u.id WHERE u.id=$1`,[req.user.id]);if(!r.rowCount)return res.status(404).json({error:'Usuário não encontrado.'});await q('UPDATE users SET last_seen_at=NOW() WHERE id=$1',[req.user.id]);const x=r.rows[0];res.json({user:safeUser(x),driver:x.role==='driver'?{cnh:x.cnh,plate:x.plate,vehicle_model:x.vehicle_model,service_mode:x.service_mode,approved_at:x.approved_at}:null,commerce:x.role==='commerce'?{legal_name:x.legal_name,trade_name:x.trade_name,cnpj:x.cnpj,category:x.category,address:x.commerce_address}:null})});
+app.put('/api/me',auth,async(req,res)=>{try{const {address}=req.body;if(req.user.role!=='passenger')return res.status(403).json({error:'Motoristas e comércios não podem alterar dados diretamente. Solicite a alteração pelo suporte.'});const r=await q(`UPDATE users SET address=COALESCE($1,address),last_seen_at=NOW() WHERE id=$2 RETURNING *`,[address||null,req.user.id]);res.json({user:safeUser(r.rows[0])})}catch{res.status(500).json({error:'Não foi possível atualizar o perfil.'})}});
+app.post('/api/profile/photo-request',auth,upload.single('photo'),async(req,res)=>{if(!req.file)return res.status(400).json({error:'Envie a foto.'});await q(`UPDATE users SET profile_photo_path=$1,profile_photo_status='pending' WHERE id=$2`,['/uploads/'+require('path').basename(req.file.path),req.user.id]);res.json({ok:true,message:'Foto enviada para aprovação do administrador.'})});
+app.put('/api/driver/preferences',auth,async(req,res)=>{if(req.user.role!=='driver')return res.status(403).json({error:'Somente motoristas/entregadores.'});const mode=req.body.serviceMode==='women_only'?'women_only':'all';const u=await q('SELECT gender FROM users WHERE id=$1',[req.user.id]);if(mode==='women_only'&&u.rows[0].gender!=='female')return res.status(400).json({error:'Somente motoristas mulheres podem selecionar somente mulheres.'});await q(`UPDATE driver_profiles SET service_mode=$1 WHERE user_id=$2`,[mode,req.user.id]);res.json({ok:true,serviceMode:mode})});
+app.post('/api/driver/documents',auth,upload.fields([{name:'selfie',maxCount:1},{name:'cnh',maxCount:1},{name:'vehicleDocument',maxCount:1}]),async(req,res)=>{if(req.user.role!=='driver')return res.status(403).json({error:'Somente motoristas/entregadores.'});const f=req.files||{};await q(`UPDATE driver_profiles SET cnh=COALESCE($1,cnh),plate=COALESCE($2,plate),vehicle_model=COALESCE($3,vehicle_model),selfie_path=COALESCE($4,selfie_path),document_path=COALESCE($5,document_path) WHERE user_id=$6`,[req.body.cnh||null,req.body.plate||null,req.body.vehicleModel||null,f.selfie?.[0]?'/uploads/'+require('path').basename(f.selfie[0].path):null,f.vehicleDocument?.[0]?'/uploads/'+require('path').basename(f.vehicleDocument[0].path):null,req.user.id]);res.json({ok:true,message:'Documentos enviados para análise.'})});
+app.post('/api/commerce/documents',auth,upload.fields([{name:'businessDocument',maxCount:1},{name:'logo',maxCount:1}]),async(req,res)=>{if(req.user.role!=='commerce')return res.status(403).json({error:'Somente comércio.'});const f=req.files||{};await q(`UPDATE commerce_profiles SET document_path=COALESCE($1,document_path),logo_path=COALESCE($2,logo_path) WHERE user_id=$3`,[f.businessDocument?.[0]?'/uploads/'+require('path').basename(f.businessDocument[0].path):null,f.logo?.[0]?'/uploads/'+require('path').basename(f.logo[0].path):null,req.user.id]);res.json({ok:true,message:'Documentos do comércio enviados para análise.'})});
+app.post('/api/driver/location',auth,async(req,res)=>{if(req.user.role!=='driver')return res.status(403).json({error:'Somente motoristas/entregadores.'});const lat=Number(req.body.latitude),lng=Number(req.body.longitude);if(!Number.isFinite(lat)||!Number.isFinite(lng))return res.status(400).json({error:'Localização inválida.'});await q(`UPDATE driver_profiles SET latitude=$1,longitude=$2,last_location_at=NOW() WHERE user_id=$3`,[lat,lng,req.user.id]);await q('UPDATE users SET last_seen_at=NOW() WHERE id=$1',[req.user.id]);res.json({ok:true})});
+app.post('/api/driver/offline',auth,async(req,res)=>{if(req.user.role!=='driver')return res.status(403).json({error:'Somente motoristas.'});await q(`UPDATE driver_profiles SET last_location_at=NOW()-INTERVAL '10 minutes' WHERE user_id=$1`,[req.user.id]);res.json({ok:true})});
+app.get('/api/drivers/radar',auth,async(req,res)=>{if(req.user.role!=='passenger')return res.status(403).json({error:'Somente clientes podem usar o radar.'});const lat=Number(req.query.lat),lng=Number(req.query.lng);const r=await q(`SELECT u.id,u.name,u.profile_photo_path,dp.latitude,dp.longitude,dp.service_type,dp.vehicle_model FROM users u JOIN driver_profiles dp ON dp.user_id=u.id WHERE u.role='driver' AND u.status='active' AND dp.latitude IS NOT NULL AND dp.longitude IS NOT NULL AND dp.last_location_at>NOW()-INTERVAL '2 minutes'`);const R=6371,toRad=x=>x*Math.PI/180;const drivers=r.rows.map(d=>{const a=toRad(Number(d.latitude)-lat),b=toRad(Number(d.longitude)-lng);const h=Math.sin(a/2)**2+Math.cos(toRad(lat))*Math.cos(toRad(d.latitude))*Math.sin(b/2)**2;const km=2*R*Math.asin(Math.min(1,Math.sqrt(h)));return{id:d.id,name:d.name,profile_photo_path:d.profile_photo_path,latitude:Math.round(Number(d.latitude)*1000)/1000,longitude:Math.round(Number(d.longitude)*1000)/1000,distance_km:Number(km.toFixed(1)),eta_min:Math.max(1,Math.round(km/30*60)),service_type:d.service_type||'both',vehicle_model:d.vehicle_model||null}}).filter(x=>x.distance_km<=15).sort((a,b)=>a.distance_km-b.distance_km).slice(0,20);res.json({drivers})});
+app.post('/api/rides',auth,async(req,res)=>{if(req.user.role!=='passenger')return res.status(403).json({error:'Somente clientes podem pedir corrida.'});const destination=String(req.body.destination||'').trim(),origin=String(req.body.origin||'').trim(),distance=Number(req.body.distanceKm||0),womenOnly=Boolean(req.body.womenOnly);if(!destination||!Number.isFinite(distance)||distance<=0)return res.status(400).json({error:'Destino e distância são obrigatórios.'});const base=await setting('ride_base_fee',0),per=await setting('ride_per_km',1),price=Number(Math.max(base,distance*per).toFixed(2));const r=await q(`INSERT INTO rides(passenger_id,origin,destination,distance_km,price,women_only,status) VALUES($1,$2,$3,$4,$5,$6,'searching') RETURNING *`,[req.user.id,origin,destination,distance,price,womenOnly]);res.status(201).json({ride:r.rows[0]})});
+app.get('/api/rides/active',auth,async(req,res)=>{const r=await q(`SELECT r.*,p.name passenger_name,p.profile_photo_path passenger_photo,d.name driver_name FROM rides r JOIN users p ON p.id=r.passenger_id LEFT JOIN users d ON d.id=r.driver_id WHERE (r.passenger_id=$1 OR r.driver_id=$1) AND r.status IN ('searching','accepted','arrived','started') ORDER BY r.created_at DESC`,[req.user.id]);res.json({rides:r.rows})});
+app.get('/api/rides/available',auth,async(req,res)=>{if(req.user.role!=='driver')return res.status(403).json({error:'Somente motoristas.'});const r=await q(`SELECT r.*,p.name passenger_name,p.profile_photo_path passenger_photo FROM rides r JOIN users p ON p.id=r.passenger_id JOIN users d ON d.id=$1 LEFT JOIN driver_profiles dp ON dp.user_id=d.id WHERE r.status='searching' AND r.driver_id IS NULL AND d.status='active' AND (r.women_only=FALSE OR (d.gender='female' AND COALESCE(dp.service_mode,'all') IN ('all','women_only'))) AND (COALESCE(dp.service_mode,'all')='all' OR (COALESCE(dp.service_mode,'all')='women_only' AND r.women_only=TRUE)) ORDER BY r.created_at DESC`,[req.user.id]);res.json({rides:r.rows})});
+app.get('/api/rides/:id',auth,async(req,res)=>{const r=await q(`SELECT r.*,p.name passenger_name,p.profile_photo_path passenger_photo,p.phone passenger_phone,d.name driver_name,d.profile_photo_path driver_photo,dp.latitude driver_latitude,dp.longitude driver_longitude,dp.vehicle_model driver_vehicle_model,dp.plate driver_plate FROM rides r JOIN users p ON p.id=r.passenger_id LEFT JOIN users d ON d.id=r.driver_id LEFT JOIN driver_profiles dp ON dp.user_id=r.driver_id WHERE r.id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:'Corrida não encontrada.'});const x=r.rows[0];if(Number(x.passenger_id)!==Number(req.user.id)&&Number(x.driver_id)!==Number(req.user.id))return res.status(403).json({error:'Acesso negado.'});res.json({ride:x})});
+app.post('/api/rides/:id/accept',auth,async(req,res)=>{if(req.user.role!=='driver')return res.status(403).json({error:'Somente motoristas.'});const r=await q(`UPDATE rides r SET driver_id=$1,status='accepted',accepted_at=NOW() FROM users d LEFT JOIN driver_profiles dp ON dp.user_id=d.id WHERE r.id=$2 AND r.status='searching' AND r.driver_id IS NULL AND d.id=$1 AND d.status='active' AND (r.women_only=FALSE OR (d.gender='female' AND COALESCE(dp.service_mode,'all') IN ('all','women_only'))) AND (COALESCE(dp.service_mode,'all')='all' OR (COALESCE(dp.service_mode,'all')='women_only' AND r.women_only=TRUE)) RETURNING r.*`,[req.user.id,req.params.id]);if(!r.rowCount)return res.status(409).json({error:'Corrida indisponível.'});res.json({ride:r.rows[0]})});
+for(const [path,status,nextStatus,field] of [['arrive','accepted','arrived','arrived_at'],['start','accepted|arrived','started','started_at'],['finish','started','finished','finished_at']]){app.post('/api/rides/:id/'+path,auth,async(req,res)=>{const allowed=status.split('|');const r=await q(`UPDATE rides SET status=$1,${field}=NOW() WHERE id=$2 AND driver_id=$3 AND status=ANY($4::text[]) RETURNING *`,[nextStatus,req.params.id,req.user.id,allowed]);if(!r.rowCount)return res.status(409).json({error:'Ação inválida.'});if(nextStatus==='finished'){const pct=await setting('ride_commission_percent',5);const fee=Number(r.rows[0].price)*pct/100;await q('UPDATE rides SET platform_fee=$1,driver_payout=$2 WHERE id=$3',[fee,Number(r.rows[0].price)-fee,r.rows[0].id]);r.rows[0].platform_fee=fee;r.rows[0].driver_payout=Number(r.rows[0].price)-fee}res.json({ride:r.rows[0]})})}
+app.post('/api/rides/:id/cancel',auth,async(req,res)=>{const c=await q('SELECT * FROM rides WHERE id=$1',[req.params.id]);if(!c.rowCount)return res.status(404).json({error:'Corrida não encontrada.'});const x=c.rows[0],uid=Number(req.user.id),isP=Number(x.passenger_id)===uid,isD=Number(x.driver_id||-1)===uid;if(!isP&&!isD)return res.status(403).json({error:'Acesso negado.'});if(!['searching','accepted','arrived','started'].includes(x.status))return res.status(409).json({error:'Essa corrida não pode mais ser cancelada.'});let comp=0;if(isP&&x.status==='started'&&x.started_at&&(Date.now()-new Date(x.started_at))/60000>=3)comp=5;const r=await q(`UPDATE rides SET status='cancelled',cancelled_at=NOW(),cancelled_by=$1,driver_compensation=$2 WHERE id=$3 RETURNING *`,[isP?'passenger':'driver',comp,req.params.id]);res.json({ride:r.rows[0],compensation:comp,message:comp?'Corrida cancelada. R$5 de compensação registrada.':'Corrida cancelada.'})});
+app.get('/api/commerce/products',auth,async(req,res)=>{if(req.user.role!=='commerce')return res.status(403).json({error:'Somente comércio.'});const r=await q(`SELECT * FROM products WHERE commerce_id=$1 ORDER BY created_at DESC`,[req.user.id]);res.json({products:r.rows})});
+app.post('/api/commerce/products',auth,upload.fields([{name:'photo1',maxCount:1},{name:'photo2',maxCount:1},{name:'photo3',maxCount:1}]),async(req,res)=>{if(req.user.role!=='commerce')return res.status(403).json({error:'Somente comércio.'});const f=req.files||{};const price=Number(req.body.price);if(!req.body.name||!Number.isFinite(price)||price<0)return res.status(400).json({error:'Nome e preço são obrigatórios.'});const r=await q(`INSERT INTO products(commerce_id,name,description,price,category,photo1,photo2,photo3) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,[req.user.id,req.body.name,req.body.description||null,price,req.body.category||null,f.photo1?.[0]?.path||null,f.photo2?.[0]?.path||null,f.photo3?.[0]?.path||null]);res.status(201).json({product:r.rows[0]})});
+app.put('/api/commerce/products/:id',auth,async(req,res)=>{if(req.user.role!=='commerce')return res.status(403).json({error:'Somente comércio.'});const r=await q(`UPDATE products SET name=COALESCE($1,name),description=COALESCE($2,description),price=COALESCE($3,price),category=COALESCE($4,category),available=COALESCE($5,available) WHERE id=$6 AND commerce_id=$7 RETURNING *`,[req.body.name||null,req.body.description||null,req.body.price==null?null:Number(req.body.price),req.body.category||null,req.body.available==null?null:Boolean(req.body.available),req.params.id,req.user.id]);if(!r.rowCount)return res.status(404).json({error:'Produto não encontrado.'});res.json({product:r.rows[0]})});
+app.get('/api/catalog',auth,async(req,res)=>{if(req.user.role!=='passenger')return res.status(403).json({error:'Somente clientes.'});const r=await q(`SELECT p.*,cp.trade_name,cp.address AS commerce_address FROM products p JOIN users u ON u.id=p.commerce_id JOIN commerce_profiles cp ON cp.user_id=u.id WHERE u.status='active' AND p.available=TRUE ORDER BY p.created_at DESC`);res.json({products:r.rows})});
+app.get('/api/delivery/quote',auth,async(req,res)=>{if(!['passenger','commerce'].includes(req.user.role))return res.status(403).json({error:'Somente clientes ou comércio.'});const km=Math.max(0,Number(req.query.km||0)),base=await setting('delivery_base_fee',5),per=await setting('delivery_per_km',1.5);const fee=Number((base+km*per).toFixed(2));res.json({km,deliveryFee:fee})});
+app.post('/api/orders',auth,async(req,res)=>{if(req.user.role!=='passenger')return res.status(403).json({error:'Somente clientes.'});const {commerceId,items=[],deliveryKm=0,address}=req.body;if(!commerceId||!Array.isArray(items)||!items.length)return res.status(400).json({error:'Pedido inválido.'});const ids=items.map(x=>Number(x.productId));const r=await q(`SELECT * FROM products WHERE id=ANY($1::int[]) AND commerce_id=$2 AND available=TRUE`,[ids,commerceId]);if(r.rowCount!==ids.length)return res.status(400).json({error:'Um ou mais produtos não estão disponíveis.'});let subtotal=0;for(const it of items){const p=r.rows.find(x=>Number(x.id)===Number(it.productId));subtotal+=Number(p.price)*Math.max(1,Number(it.quantity||1))}const base=await setting('delivery_base_fee',5),per=await setting('delivery_per_km',1.5),delivery=Number((base+Number(deliveryKm)*per).toFixed(2)),pct=await setting('delivery_commission_percent',5),platformFee=Number((subtotal*pct/100).toFixed(2)),total=Number((subtotal+delivery).toFixed(2)),payout=Number(delivery.toFixed(2));const o=(await q(`INSERT INTO orders(customer_id,commerce_id,subtotal,delivery_km,delivery_fee,total,platform_fee,driver_payout,delivery_address) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,[req.user.id,commerceId,subtotal,deliveryKm,delivery,total,platformFee,payout,address||null])).rows[0];for(const it of items){const p=r.rows.find(x=>Number(x.id)===Number(it.productId));await q(`INSERT INTO order_items(order_id,product_id,quantity,unit_price) VALUES($1,$2,$3,$4)`,[o.id,p.id,Math.max(1,Number(it.quantity||1)),p.price])}res.status(201).json({order:o})});
+app.get('/api/commerce/orders',auth,async(req,res)=>{if(req.user.role!=='commerce')return res.status(403).json({error:'Somente comércio.'});const r=await q(`SELECT * FROM orders WHERE commerce_id=$1 ORDER BY created_at DESC`,[req.user.id]);res.json({orders:r.rows})});
+app.get('/api/driver/earnings',auth,async(req,res)=>{if(req.user.role!=='driver')return res.status(403).json({error:'Somente motorista.'});const rides=await q(`SELECT COALESCE(SUM(driver_payout),0) total,COUNT(*) count FROM rides WHERE driver_id=$1 AND status='finished'`,[req.user.id]);const orders=await q(`SELECT COALESCE(SUM(driver_payout),0) total,COUNT(*) count FROM orders WHERE driver_id=$1 AND status='delivered'`,[req.user.id]);res.json({rides:rides.rows[0],orders:orders.rows[0]})});
+app.get('/api/orders/available',auth,async(req,res)=>{if(req.user.role!=='driver')return res.status(403).json({error:'Somente motorista/entregador.'});const r=await q(`SELECT o.*,cp.trade_name,u.name customer_name,u.profile_photo_path customer_photo FROM orders o JOIN commerce_profiles cp ON cp.user_id=o.commerce_id JOIN users u ON u.id=o.customer_id JOIN users d ON d.id=$1 WHERE o.status='accepted_by_commerce' AND o.driver_id IS NULL AND d.status='active' ORDER BY o.created_at DESC`,[req.user.id]);res.json({orders:r.rows})});
+app.post('/api/orders/:id/accept',auth,async(req,res)=>{if(req.user.role!=='driver')return res.status(403).json({error:'Somente motorista/entregador.'});const r=await q(`UPDATE orders SET driver_id=$1,status='driver_accepted',accepted_at=NOW() WHERE id=$2 AND status='accepted_by_commerce' AND driver_id IS NULL RETURNING *`,[req.user.id,req.params.id]);if(!r.rowCount)return res.status(409).json({error:'Entrega indisponível.'});res.json({order:r.rows[0]})});
+app.post('/api/orders/:id/pickup',auth,async(req,res)=>{if(req.user.role!=='driver')return res.status(403).json({error:'Somente motorista/entregador.'});const r=await q(`UPDATE orders SET status='picked_up',picked_up_at=NOW() WHERE id=$1 AND driver_id=$2 AND status='driver_accepted' RETURNING *`,[req.params.id,req.user.id]);if(!r.rowCount)return res.status(409).json({error:'Ação inválida.'});res.json({order:r.rows[0]})});
+app.post('/api/orders/:id/deliver',auth,async(req,res)=>{if(req.user.role!=='driver')return res.status(403).json({error:'Somente motorista/entregador.'});const r=await q(`UPDATE orders SET status='delivered',delivered_at=NOW() WHERE id=$1 AND driver_id=$2 AND status='picked_up' RETURNING *`,[req.params.id,req.user.id]);if(!r.rowCount)return res.status(409).json({error:'Ação inválida.'});res.json({order:r.rows[0]})});
+app.post('/api/commerce/orders/:id/accept',auth,async(req,res)=>{if(req.user.role!=='commerce')return res.status(403).json({error:'Somente comércio.'});const r=await q(`UPDATE orders SET status='accepted_by_commerce' WHERE id=$1 AND commerce_id=$2 AND status='pending' RETURNING *`,[req.params.id,req.user.id]);if(!r.rowCount)return res.status(409).json({error:'Pedido indisponível.'});res.json({order:r.rows[0]})});
+app.post('/api/commerce/orders/:id/reject',auth,async(req,res)=>{if(req.user.role!=='commerce')return res.status(403).json({error:'Somente comércio.'});const r=await q(`UPDATE orders SET status='cancelled',cancelled_at=NOW() WHERE id=$1 AND commerce_id=$2 AND status='pending' RETURNING *`,[req.params.id,req.user.id]);if(!r.rowCount)return res.status(409).json({error:'Pedido indisponível.'});res.json({order:r.rows[0]})});
+app.post('/api/help',auth,async(req,res)=>{const {subject='Ajuda',message}=req.body;if(!message)return res.status(400).json({error:'Descreva o problema.'});const r=await q(`INSERT INTO support_tickets(user_id,subject,message) VALUES($1,$2,$3) RETURNING *`,[req.user.id,subject,message]);res.status(201).json({ticket:r.rows[0]})});
+app.get('/api/help',auth,async(req,res)=>{const r=await q(`SELECT * FROM support_tickets WHERE user_id=$1 ORDER BY created_at DESC`,[req.user.id]);res.json({tickets:r.rows})});
+app.post('/api/admin/login',async(req,res)=>{if(!process.env.ADMIN_EMAIL||!process.env.ADMIN_PASSWORD)return res.status(503).json({error:'Admin não configurado no servidor.'});if(String(req.body.email).toLowerCase()!==String(process.env.ADMIN_EMAIL).toLowerCase()||String(req.body.password)!==String(process.env.ADMIN_PASSWORD))return res.status(401).json({error:'Credenciais administrativas inválidas.'});res.json({token:jwt.sign({admin:true},JWT_SECRET,{expiresIn:'8h'})})});
+app.get('/api/admin/dashboard',adminAuth,async(req,res)=>{const c=async(sql,p=[])=>Number((await q(sql,p)).rows[0].n||0);res.json({passengers:{total:await c("SELECT COUNT(*) n FROM users WHERE role='passenger'"),online:await c("SELECT COUNT(*) n FROM users WHERE role='passenger' AND last_seen_at>NOW()-INTERVAL '2 minutes'")},drivers:{total:await c("SELECT COUNT(*) n FROM users WHERE role='driver'"),approved:await c("SELECT COUNT(*) n FROM users WHERE role='driver' AND status='active'"),pending:await c("SELECT COUNT(*) n FROM users WHERE role='driver' AND status='pending'"),online:await c("SELECT COUNT(*) n FROM users u JOIN driver_profiles dp ON dp.user_id=u.id WHERE u.role='driver' AND u.status='active' AND dp.last_location_at>NOW()-INTERVAL '2 minutes'")},commerce:{total:await c("SELECT COUNT(*) n FROM users WHERE role='commerce'"),approved:await c("SELECT COUNT(*) n FROM users WHERE role='commerce' AND status='active'"),pending:await c("SELECT COUNT(*) n FROM users WHERE role='commerce' AND status='pending'")},help:await c("SELECT COUNT(*) n FROM support_tickets WHERE status='open'"),deliveries:{pending:await c("SELECT COUNT(*) n FROM orders WHERE status IN ('pending','accepted_by_commerce')"),active:await c("SELECT COUNT(*) n FROM orders WHERE status IN ('driver_accepted','picked_up')"),finished:await c("SELECT COUNT(*) n FROM orders WHERE status='delivered' AND delivered_at::date=CURRENT_DATE")}})});
+app.get('/api/admin/drivers',adminAuth,async(req,res)=>{const r=await q(`SELECT u.id,u.name,u.cpf,u.phone,u.email,u.gender,u.status,u.profile_photo_path,dp.cnh,dp.plate,dp.vehicle_model,dp.service_mode,dp.approved_at FROM users u JOIN driver_profiles dp ON dp.user_id=u.id WHERE u.role='driver' ORDER BY u.created_at DESC`);res.json({drivers:r.rows})});
+app.post('/api/admin/drivers/:id/approve',adminAuth,async(req,res)=>{const r=await q(`UPDATE users SET status='active' WHERE id=$1 AND role='driver' RETURNING id,name,status`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:'Motorista não encontrado.'});await q(`UPDATE driver_profiles SET approved_at=NOW() WHERE user_id=$1`,[req.params.id]);res.json({driver:r.rows[0]})});
+app.post('/api/admin/drivers/:id/reject',adminAuth,async(req,res)=>{const r=await q(`UPDATE users SET status='rejected' WHERE id=$1 AND role='driver' RETURNING id,name,status`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:'Motorista não encontrado.'});res.json({driver:r.rows[0]})});
+app.get('/api/admin/commerce',adminAuth,async(req,res)=>{const r=await q(`SELECT u.id,u.name,u.cpf,u.phone,u.email,u.status,cp.* FROM users u JOIN commerce_profiles cp ON cp.user_id=u.id WHERE u.role='commerce' ORDER BY u.created_at DESC`);res.json({commerce:r.rows})});
+app.post('/api/admin/commerce/:id/approve',adminAuth,async(req,res)=>{const r=await q(`UPDATE users SET status='active' WHERE id=$1 AND role='commerce' RETURNING id,name,status`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:'Comércio não encontrado.'});await q(`UPDATE commerce_profiles SET approved_at=NOW() WHERE user_id=$1`,[req.params.id]);res.json({commerce:r.rows[0]})});
+app.post('/api/admin/commerce/:id/reject',adminAuth,async(req,res)=>{const r=await q(`UPDATE users SET status='rejected' WHERE id=$1 AND role='commerce' RETURNING id,name,status`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:'Comércio não encontrado.'});res.json({commerce:r.rows[0]})});
+app.get('/api/admin/help',adminAuth,async(req,res)=>{const r=await q(`SELECT s.*,u.name,u.email FROM support_tickets s JOIN users u ON u.id=s.user_id ORDER BY s.created_at DESC`);res.json({tickets:r.rows})});
+app.post('/api/admin/help/:id/reply',adminAuth,async(req,res)=>{const r=await q(`UPDATE support_tickets SET admin_reply=$1,status='closed',updated_at=NOW() WHERE id=$2 RETURNING *`,[req.body.reply||'',req.params.id]);res.json({ticket:r.rows[0]})});
+app.get('/api/admin/photo-requests',adminAuth,async(req,res)=>{const r=await q(`SELECT id,name,email,profile_photo_path,profile_photo_status FROM users WHERE profile_photo_status='pending' ORDER BY id DESC`);res.json({requests:r.rows})});
+app.post('/api/admin/photo-requests/:id/approve',adminAuth,async(req,res)=>{const r=await q(`UPDATE users SET profile_photo_status='approved' WHERE id=$1 RETURNING id,name`,[req.params.id]);res.json({user:r.rows[0]})});
+app.post('/api/admin/photo-requests/:id/reject',adminAuth,async(req,res)=>{const r=await q(`UPDATE users SET profile_photo_status='rejected' WHERE id=$1 RETURNING id,name`,[req.params.id]);res.json({user:r.rows[0]})});
+app.get('/api/admin/settings',adminAuth,async(req,res)=>{const r=await q('SELECT key,value FROM app_settings ORDER BY key');res.json({settings:r.rows})});
+app.put('/api/admin/settings',adminAuth,async(req,res)=>{for(const [k,v] of Object.entries(req.body||{})){if(!['ride_commission_percent','ride_base_fee','ride_per_km','delivery_commission_percent','delivery_base_fee','delivery_per_km'].includes(k))continue;await q(`INSERT INTO app_settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`,[k,String(v)])}res.json({ok:true})});
+app.get('/api/config/maps',(req,res)=>res.json({googleMapsApiKey:process.env.GOOGLE_MAPS_API_KEY||''}));
+app.get('/admin',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
+app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
+initDatabase().then(()=>app.listen(PORT,()=>console.log(`DYABY rodando na porta ${PORT}`))).catch(e=>{console.error(e);process.exit(1)});

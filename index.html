@@ -1,738 +1,82 @@
-<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>DYABY — Mobilidade que aproxima.</title>
-<style>
-:root{--bg:#070707;--card:#151515;--gold:#ffc400;--pink:#ff4f9a;--white:#fff;--muted:#aaa;--line:#292929;--green:#36d98a;--red:#ff5d5d}
-*{box-sizing:border-box}body{margin:0;background:#000;color:#fff;font-family:Arial,Helvetica,sans-serif}.app{max-width:430px;min-height:100vh;margin:auto;background:var(--bg);overflow:hidden}.screen{display:none;min-height:100vh;padding:22px 18px 100px}.screen.active{display:block}.row{display:flex;align-items:center;justify-content:space-between;gap:12px}.small{color:var(--muted);font-size:13px}.muted{color:var(--muted)}h1{font-size:28px;margin:6px 0 12px}h2{font-size:20px}.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin:12px 0}.input,.select{width:100%;padding:14px;border-radius:12px;border:1px solid #333;background:#0e0e0e;color:#fff;margin:6px 0 10px;font-size:16px}.btn{border:0;border-radius:13px;padding:14px 16px;width:100%;font-weight:700;font-size:15px;margin:5px 0;cursor:pointer}.primary{background:var(--gold);color:#000}.dark{background:#262626;color:#fff}.pink{background:var(--pink);color:#fff}.outline{background:transparent;color:#fff;border:1px solid #555}.badge{background:#222;border:1px solid #444;border-radius:999px;padding:8px 10px;font-size:12px}.brand{font-size:18px;color:var(--gold);font-weight:800}.topbrand{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}.topbrand b{font-size:30px;color:var(--gold)}.message{min-height:22px;padding:8px 0;color:#ff7b7b;font-size:14px}.price{font-size:20px;font-weight:800;color:var(--gold)}.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(430px,100%);display:flex;background:#111;border-top:1px solid #333;padding:8px;z-index:10}.nav button{flex:1;background:none;border:0;color:#aaa;padding:7px;font-size:12px}.nav b{display:block;color:#fff;font-size:20px}.hero{padding:18px;border-radius:22px;background:linear-gradient(145deg,#191919,#0b0b0b);border:1px solid #292929;min-height:190px;display:flex;flex-direction:column;justify-content:flex-end}.mascot{font-size:72px;margin-bottom:8px}.service{min-height:90px}.status{padding:10px;border-radius:10px;background:#111;border:1px solid #333}.ok{color:var(--green)}.danger{color:var(--red)}
-</style>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
-<style>
-#map{height:330px;border-radius:18px;border:1px solid #333;overflow:hidden;margin:10px 0;background:#111}
-.map-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.map-actions .btn{margin:0}
-.map-modes{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}.map-modes button{background:#171717;color:#ddd;border:1px solid #333;border-radius:10px;padding:9px 4px;font-size:11px}.map-modes button.active{border-color:var(--gold);color:var(--gold)}
-.route-info{display:flex;justify-content:space-between;gap:8px;margin-top:8px}.route-info div{flex:1;background:#111;border:1px solid #333;border-radius:10px;padding:10px;text-align:center}.traffic-legend{display:flex;gap:7px;flex-wrap:wrap;font-size:11px;color:#bbb;margin:7px 0}.traffic-legend span{padding:4px 7px;border-radius:999px;background:#171717;border:1px solid #333}.map-note{font-size:11px;color:#888;line-height:1.35;margin-top:8px}
-</style>
-</head>
-<body>
-<div class="app">
-
-<section id="welcome" class="screen active">
-  <div class="hero">
-    <div class="mascot">🐶🏍️</div>
-    <div class="small brand">DYABY</div>
-    <h1>Mobilidade que aproxima.</h1>
-    <p class="muted">Corridas, entregas e serviços de moto.</p>
-    <button class="btn primary" onclick="show('login')">Entrar</button>
-    <button class="btn outline" onclick="show('register')">Criar conta</button>
-    <button class="btn dark" onclick="show('adminLogin')">🔐 Área administrativa</button>
-  </div>
-</section>
-
-<section id="login" class="screen">
-  <div class="topbrand"><b>DYABY</b><span class="badge">👤 Passageiro</span></div>
-  <div class="small">Bem-vindo</div>
-  <h1>Entrar no DYABY</h1>
-  <p class="muted">Use seu e-mail para acessar sua conta.</p>
-  <div class="card">
-    <input id="loginEmail" class="input" type="email" autocomplete="email" placeholder="E-mail">
-    <input id="loginPassword" class="input" type="password" autocomplete="current-password" placeholder="Senha">
-    <button id="loginBtn" class="btn primary" onclick="login()">Entrar</button>
-    <div id="loginMsg" class="message"></div>
-  </div>
-  <div class="card">
-    <h2>Criar conta</h2>
-    <p class="muted">Ainda não tem uma conta?</p>
-    <button class="btn outline" onclick="show('register')">Criar minha conta</button>
-  </div>
-  <button class="btn dark" onclick="show('welcome')">Voltar</button>
-</section>
-
-<section id="register" class="screen">
-  <div class="topbrand"><b>DYABY</b><span class="badge">📝 Cadastro</span></div>
-  <h1>Criar sua conta</h1>
-  <p class="muted">Cadastre-se para usar corridas, entregas e serviços.</p>
-  <div class="card">
-    <label class="small">Tipo de conta</label>
-    <select id="regRole" class="select" onchange="toggleDriverFields()">
-      <option value="passenger">👤 Passageiro</option>
-      <option value="driver">🏍️ Motorista / Entregador</option>
-    </select>
-
-    <input id="regName" class="input" autocomplete="name" placeholder="Nome completo">
-    <input id="regCpf" class="input" inputmode="numeric" placeholder="CPF">
-    <input id="regPhone" class="input" inputmode="tel" placeholder="Telefone / WhatsApp">
-    <input id="regEmail" class="input" type="email" autocomplete="email" placeholder="E-mail">
-    <input id="regPassword" class="input" type="password" autocomplete="new-password" placeholder="Senha (mínimo 6 caracteres)">
-
-    <select id="regGender" class="select">
-      <option value="">Sexo (opcional)</option>
-      <option value="female">Feminino</option>
-      <option value="male">Masculino</option>
-      <option value="other">Outro</option>
-    </select>
-  </div>
-
-  <div id="driverFields" class="card" style="display:none">
-    <h2>🏍️ Dados do motorista</h2>
-    <input id="regCnh" class="input" placeholder="CNH">
-    <input id="regPlate" class="input" placeholder="Placa da moto">
-    <input id="regVehicle" class="input" placeholder="Modelo da moto">
-    <select id="regServiceMode" class="select">
-      <option value="all">👥 Mulheres e demais passageiros</option>
-      <option value="women_only">👩 Somente mulheres</option>
-    </select>
-    <p class="small">O modo somente mulheres é destinado a motoristas mulheres.</p>
-  </div>
-
-  <button id="registerBtn" class="btn primary" onclick="register()">Criar conta</button>
-  <div id="regMsg" class="message"></div>
-  <button class="btn outline" onclick="show('login')">Já tenho uma conta</button>
-  <button class="btn dark" onclick="show('welcome')">Voltar</button>
-</section>
-
-<section id="home" class="screen">
-  <div class="row">
-    <div><span class="small">Olá!</span><h1 id="helloName">👋</h1></div>
-    <span class="badge">Patos de Minas</span>
-  </div>
-  <div class="hero">
-    <div class="mascot">🐶🏍️</div>
-    <b>O que você precisa hoje?</b>
-    <input id="homeDestination" class="input" placeholder="📍 Para onde vamos?">
-  </div>
-  <h2>Serviços</h2>
-  <div class="card service row"><div>🏍️ <b>Corrida</b><div class="small">Transporte de passageiro</div></div><button class="btn primary" style="width:120px" onclick="openRide(false)">Pedir</button></div>
-  <div class="card service row"><div>📦 <b>Encomenda</b><div class="small">Pequenos volumes</div></div><button class="btn primary" style="width:120px" onclick="alert('Módulo de entregas será conectado ao backend nesta próxima etapa.')">Pedir</button></div>
-  <div class="card service row"><div>🍔 <b>Comida</b><div class="small">Comércios parceiros</div></div><button class="btn dark" style="width:120px" onclick="alert('Módulo de comida preparado para integração.')">Ver</button></div>
-  <div class="card service row"><div>🍰 <b>Bolos e doces</b><div class="small">Pequenos negócios</div></div><button class="btn dark" style="width:120px" onclick="alert('Módulo de bolos e doces preparado para integração.')">Ver</button></div>
-  <div class="card service row"><div>👩 <b>Corrida para mulheres</b><div class="small">Motorista mulher quando disponível</div></div><button class="btn pink" style="width:120px" onclick="openRide(true)">Pedir</button></div>
-  <div class="card"><b>💬 Ajuda</b><p class="muted">Fale com um agente para resolver problemas de cadastro, corrida ou conta.</p><button class="btn outline" onclick="show('help')">Falar com suporte</button></div>
-</section>
-
-<section id="ride" class="screen">
-  <h1 id="rideTitle">Corrida</h1>
-  <div class="card">
-    <div id="map"></div>
-    <div class="map-modes">
-      <button id="modeRoad" class="active" onclick="setMapMode('road')">🗺️ Normal</button>
-      <button id="modeSatellite" onclick="setMapMode('satellite')">🛰️ Satélite</button>
-      <button id="modeDark" onclick="setMapMode('dark')">🌙 Escuro</button>
-      <button id="modeTraffic" onclick="setMapMode('traffic')">🚦 Trânsito</button>
-    </div>
-    <div class="map-actions">
-      <button class="btn dark" onclick="locateMe()">📍 Minha localização</button>
-      <button class="btn outline" onclick="clearRoute()">Limpar rota</button>
-    </div>
-    <input id="rideDestination" class="input" placeholder="📍 Digite o destino">
-    <button class="btn outline" onclick="findDestination()">Buscar destino no mapa</button>
-    <div class="traffic-legend"><span>🟢 fluxo livre</span><span>🟡 moderado</span><span>🔴 congestionado</span></div>
-    <div id="mapMsg" class="small">Ative a localização para usar sua posição como origem.</div>
-    <div id="mapNote" class="map-note"></div>
-    <div id="routeInfo" class="route-info" style="display:none">
-      <div><span class="small">Distância</span><br><b id="distanceValue">—</b></div>
-      <div><span class="small">Tempo</span><br><b id="timeValue">—</b></div>
-      <div><span class="small">Estimativa</span><br><b id="fareValue">—</b></div>
-    </div>
-    <select id="ridePrice" class="select">
-      <option value="10">Moto — R$ 10,00</option>
-      <option value="18">Moto Noite — R$ 18,00</option>
-    </select>
-    <div id="womenNotice" class="status" style="display:none">👩 Esta corrida será visível apenas para motoristas mulheres elegíveis.</div>
-  </div>
-  <button id="requestBtn" class="btn primary" onclick="requestRide()">Pedir agora</button>
-  <button class="btn outline" onclick="show('home')">Voltar</button>
-  <div id="rideMsg" class="small"></div>
-</section>
-
-<section id="trip" class="screen">
-  <h1>Minha corrida</h1>
-  <div id="tripCard" class="card">Carregando...</div>
-  <button class="btn dark" onclick="cancelRide()">Cancelar corrida</button>
-  <button class="btn outline" onclick="show('help')">Ajuda</button>
-</section>
-
-<section id="driver" class="screen">
-  <h1>Área do motorista</h1>
-  <div class="card"><b id="driverName">Motorista</b><div id="driverStatus" class="small">Carregando...</div></div>
-  <div id="driverPending" class="card" style="display:none">⏳ Seu cadastro está aguardando aprovação do administrador.</div>
-  <div id="driverApproved" style="display:none">
-    <div class="card">
-      <b>Modo de atendimento</b>
-      <select id="serviceMode" class="select">
-        <option value="all">👥 Mulheres e demais passageiros</option>
-        <option value="women_only">👩 Somente mulheres</option>
-      </select>
-      <button class="btn primary" onclick="saveDriverPreference()">Salvar preferência</button>
-      <div id="prefMsg" class="small"></div>
-    </div>
-    <div class="card">
-      <div class="row"><b>Corridas disponíveis</b><button class="btn dark" style="width:110px" onclick="loadAvailable()">Atualizar</button></div>
-      <div id="available">Nenhuma corrida carregada.</div>
-    </div>
-    <div class="card">
-      <b>Minha corrida ativa</b>
-      <div id="driverActive">Nenhuma corrida.</div>
-    </div>
-  </div>
-  <button class="btn outline" onclick="logout()">Sair</button>
-</section>
-
-<section id="profile" class="screen">
-  <h1>Perfil</h1>
-  <div class="card">
-    <div><b id="profileName"></b></div>
-    <div class="small" id="profileEmail"></div>
-    <div class="small" id="profileRole"></div>
-  </div>
-  <button class="btn outline" onclick="show('help')">Ajuda e suporte</button>
-  <button class="btn dark" onclick="logout()">Sair</button>
-</section>
-
-<section id="help" class="screen">
-  <h1>Ajuda e suporte</h1>
-  <p class="muted">Você poderá falar diretamente com um agente para resolver problemas.</p>
-  <div class="card"><b>🎧 Falar com um agente</b><p>Atendimento dentro do aplicativo.</p><button class="btn primary" onclick="alert('Solicitação de atendimento enviada.')">Iniciar atendimento</button></div>
-  <div class="card"><b>📋 Problema com uma corrida</b><p>Informe o problema e o suporte poderá analisar.</p><button class="btn dark" onclick="alert('Chamado registrado.')">Abrir chamado</button></div>
-</section>
-
-
-<section id="adminLogin" class="screen">
-  <div class="topbrand"><b>DYABY</b><span class="badge">🔐 Admin</span></div>
-  <h1>Área administrativa</h1>
-  <p class="muted">Acesso restrito ao administrador do DYABY.</p>
-  <div class="card">
-    <input id="adminEmail" class="input" type="email" placeholder="E-mail do administrador">
-    <input id="adminPassword" class="input" type="password" placeholder="Senha do administrador">
-    <button class="btn primary" onclick="adminLogin()">Entrar como administrador</button>
-    <div id="adminLoginMsg" class="message"></div>
-  </div>
-  <button class="btn dark" onclick="show('welcome')">Voltar</button>
-</section>
-
-<section id="admin" class="screen">
-  <div class="topbrand"><b>DYABY</b><span class="badge">🛠️ Admin</span></div>
-  <h1>Motoristas</h1>
-  <div class="card">
-    <div class="row">
-      <b>Cadastros para análise</b>
-      <button class="btn dark" style="width:110px" onclick="loadAdminDrivers()">Atualizar</button>
-    </div>
-    <div id="adminDrivers">Carregando...</div>
-  </div>
-  <button class="btn outline" onclick="adminLogout()">Sair da administração</button>
-</section>
-
-<nav id="nav" class="nav" style="display:none">
-  <button onclick="show('home')"><b>⌂</b>Início</button>
-  <button onclick="openRide(false)"><b>🏍</b>Corrida</button>
-  <button onclick="show(currentUser?.role==='driver'?'driver':'profile')"><b>♙</b>Perfil</button>
-  <button onclick="show('help')"><b>?</b>Ajuda</button>
-</nav>
-</div>
-
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script>
-const API = "/api";
-let token = localStorage.getItem("dyaby_token");
-let currentUser = null;
-let currentRide = null;
-let womenRide = false;
-let map = null, originMarker = null, destinationMarker = null, routeLayer = null;
-let originCoords = null, destinationCoords = null;
-
-function show(id){
-  document.querySelectorAll(".screen").forEach(x=>x.classList.remove("active"));
-  const el=document.getElementById(id);
-  if(el) el.classList.add("active");
-  const nav=document.getElementById("nav");
-  nav.style.display=["welcome","login","register"].includes(id)?"none":"flex";
-  window.scrollTo(0,0);
-}
-
-async function api(url, options={}){
-  options.headers=options.headers||{};
-  options.headers["Content-Type"]="application/json";
-  if(token) options.headers.Authorization="Bearer "+token;
-  const r=await fetch(API+url,options);
-  let data={};
-  try{data=await r.json()}catch{}
-  if(!r.ok) throw new Error(data.error||"Erro na solicitação.");
-  return data;
-}
-
-async function login(){
-  const msg=document.getElementById("loginMsg");
-  const btn=document.getElementById("loginBtn");
-  if(btn.disabled) return;
-  btn.disabled=true; btn.style.opacity=".6";
-  msg.textContent="Entrando...";
-  try{
-    const data=await api("/auth/login",{method:"POST",body:JSON.stringify({
-      email:loginEmail.value.trim(),password:loginPassword.value
-    })});
-    token=data.token; localStorage.setItem("dyaby_token",token);
-    await loadMe();
-  }catch(e){
-    msg.textContent=e.message==="Erro 429"?"Muitas tentativas. Aguarde alguns segundos e tente novamente.":e.message;
-  }finally{
-    btn.disabled=false; btn.style.opacity="1";
-  }
-}
-
-function toggleDriverFields(){
-  document.getElementById("driverFields").style.display=document.getElementById("regRole").value==="driver"?"block":"none";
-}
-
-async function register(){
-  const msg=document.getElementById("regMsg");
-  const btn=document.getElementById("registerBtn");
-  if(btn.disabled) return;
-  btn.disabled=true; btn.style.opacity=".6";
-  msg.textContent="Criando sua conta...";
-  try{
-    const data=await api("/auth/register",{method:"POST",body:JSON.stringify({
-      role:document.getElementById("regRole").value,name:regName.value.trim(),cpf:regCpf.value.trim(),phone:regPhone.value.trim(),
-      email:regEmail.value.trim(),password:regPassword.value,gender:document.getElementById("regGender").value,
-      serviceMode:document.getElementById("regServiceMode").value,cnh:document.getElementById("regCnh")?.value,
-      plate:document.getElementById("regPlate")?.value,
-      vehicleModel:document.getElementById("regVehicle")?.value
-    })});
-    token=data.token; localStorage.setItem("dyaby_token",token);
-    msg.textContent=data.message||"Cadastro criado.";
-    await loadMe();
-  }catch(e){
-    msg.textContent=e.message==="Erro 429"?"Muitas tentativas. Aguarde alguns segundos e tente novamente.":e.message;
-  }finally{
-    btn.disabled=false; btn.style.opacity="1";
-  }
-}
-
-async function loadMe(){
-  if(!token){show("welcome");return}
-  try{
-    const data=await api("/me");
-    currentUser=data.user;
-    document.getElementById("helloName").textContent=(currentUser.name||"")+" 👋";
-    profileName.textContent=currentUser.name||"";
-    profileEmail.textContent=currentUser.email||"";
-    profileRole.textContent=currentUser.role==="driver"?"Motorista / Entregador":"Passageiro";
-    if(currentUser.role==="driver"){
-      show("driver");
-      driverName.textContent=currentUser.name;
-      const approved=currentUser.status==="active";
-      driverStatus.textContent=approved?"Cadastro aprovado.":"Cadastro pendente.";
-      driverPending.style.display=approved?"none":"block";
-      driverApproved.style.display=approved?"block":"none";
-      if(data.driver) serviceMode.value=data.driver.service_mode||"all";
-      if(approved) loadAvailable();
-    }else{
-      show("home");
-    }
-  }catch(e){
-    localStorage.removeItem("dyaby_token");token=null;show("login");
-  }
-}
-
-function openRide(women){
-  if(!currentUser || currentUser.role!=="passenger"){alert("Entre como passageiro para pedir uma corrida.");return}
-  womenRide=women;
-  rideTitle.textContent=women?"👩 Corrida para mulheres":"🏍️ Corrida";
-  womenNotice.style.display=women?"block":"none";
-  rideDestination.value=homeDestination.value||"";
-  show("ride");
-  setTimeout(initMap,120);
-}
-
-
-let mapProvider = "leaflet";
-let googleMap = null, googleTraffic = null, googleDirections = null, googleRouteRenderer = null;
-let mapLayers = {}, currentMapMode = "road";
-
-async function loadGoogleMapsIfAvailable(){
-  try{
-    const cfg=await fetch(API+"/config/maps").then(r=>r.json());
-    if(!cfg.googleMapsApiKey) return false;
-    if(window.google?.maps) return true;
-    await new Promise((resolve,reject)=>{
-      const cb="dyabyGoogleReady";
-      window[cb]=()=>{delete window[cb];resolve()};
-      const script=document.createElement("script");
-      script.src="https://maps.googleapis.com/maps/api/js?key="+encodeURIComponent(cfg.googleMapsApiKey)+"&libraries=geometry&callback="+cb;
-      script.async=true;script.defer=true;script.onerror=reject;document.head.appendChild(script);
-    });
-    return !!window.google?.maps;
-  }catch{return false}
-}
-
-function initLeaflet(){
-  if(!window.L) { mapMsg.textContent="Mapa ainda carregando. Tente novamente."; return; }
-  if(map){ map.invalidateSize(); return; }
-  map=L.map("map",{zoomControl:false}).setView([-18.5789,-46.5180],13);
-  L.control.zoom({position:"bottomright"}).addTo(map);
-  mapLayers.road=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"});
-  mapLayers.dark=L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{maxZoom:20,attribution:"© OpenStreetMap © CARTO"});
-  mapLayers.satellite=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Tiles © Esri"});
-  mapLayers.road.addTo(map);
-  locateMe();
-}
-
-async function initMap(){
-  const hasGoogle=await loadGoogleMapsIfAvailable();
-  if(hasGoogle){
-    mapProvider="google";
-    googleMap=new google.maps.Map(document.getElementById("map"),{
-      center:{lat:-18.5789,lng:-46.5180},zoom:13,mapTypeId:"roadmap",fullscreenControl:false,streetViewControl:false,mapTypeControl:false,zoomControl:true,
-      styles:[]
-    });
-    googleTraffic=new google.maps.TrafficLayer();
-    googleDirections=new google.maps.DirectionsService();
-    googleRouteRenderer=new google.maps.DirectionsRenderer({map:googleMap,suppressMarkers:true,preserveViewport:false,polylineOptions:{strokeColor:"#ffc400",strokeWeight:6}});
-    mapMsg.textContent="Mapa Google ativo. Trânsito em tempo real disponível.";
-    mapNote.textContent="Trânsito real depende da disponibilidade dos dados do Google na região. Acidentes e radares não são inventados pelo app; uma camada específica só será exibida quando houver uma fonte licenciada.";
-    locateMe();
-  }else{
-    mapProvider="leaflet";
-    mapNote.textContent="Mapa gratuito ativo. Para trânsito real, o DYABY precisa de uma chave Google Maps configurada no Render.";
-    initLeaflet();
-  }
-}
-
-function setMapMode(mode){
-  currentMapMode=mode;
-  ["road","satellite","dark","traffic"].forEach(x=>document.getElementById("mode"+x.charAt(0).toUpperCase()+x.slice(1))?.classList.toggle("active",x===mode));
-  if(mapProvider==="google" && googleMap){
-    if(mode==="satellite") googleMap.setMapTypeId("satellite");
-    else {googleMap.setMapTypeId("roadmap"); googleMap.setOptions({styles:mode==="dark"?[{elementType:"geometry",stylers:[{color:"#242f3e"}]},{elementType:"labels.text.fill",stylers:[{color:"#746855"}]},{elementType:"labels.text.stroke",stylers:[{color:"#242f3e"}]}]:[]});}
-    if(googleTraffic) googleTraffic.setMap(mode==="traffic"?googleMap:null);
-  }else if(map){
-    Object.values(mapLayers).forEach(l=>{if(map.hasLayer(l))map.removeLayer(l)});
-    const layer=mode==="satellite"?mapLayers.satellite:mode==="dark"?mapLayers.dark:mapLayers.road;
-    layer.addTo(map);
-    if(mode==="traffic") mapLayers.road.addTo(map);
-    map.invalidateSize();
-    mapMsg.textContent=mode==="traffic"?"Modo trânsito visual. Trânsito real requer Google Maps configurado.":"Estilo do mapa alterado.";
-  }
-}
-
-function locateMe(){
-  if(!navigator.geolocation){ mapMsg.textContent="Seu navegador não oferece localização."; return; }
-  mapMsg.textContent="Obtendo sua localização...";
-  navigator.geolocation.getCurrentPosition(pos=>{
-    originCoords=[pos.coords.latitude,pos.coords.longitude];
-    if(mapProvider==="google" && googleMap){
-      const point={lat:originCoords[0],lng:originCoords[1]};
-      if(originMarker) originMarker.setPosition(point); else originMarker=new google.maps.Marker({position:point,map:googleMap,title:"Você está aqui",label:"📍"});
-      googleMap.setCenter(point);googleMap.setZoom(15);
-    }else{
-      if(!map) initLeaflet();
-      if(originMarker) originMarker.setLatLng(originCoords); else originMarker=L.marker(originCoords).addTo(map).bindPopup("Você está aqui");
-      map.setView(originCoords,15);
-    }
-    mapMsg.textContent="Localização atual encontrada.";
-    if(destinationCoords) drawRoute();
-  },()=>{mapMsg.textContent="Permita a localização no navegador para usar o GPS."},{enableHighAccuracy:true,timeout:10000,maximumAge:30000});
-}
-
-async function findDestination(){
-  const text=rideDestination.value.trim();
-  if(!text){mapMsg.textContent="Digite um destino.";return}
-  mapMsg.textContent="Procurando destino...";
-  try{
-    const r=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q="+encodeURIComponent(text));
-    const data=await r.json();
-    if(!data.length){mapMsg.textContent="Destino não encontrado.";return}
-    destinationCoords=[Number(data[0].lat),Number(data[0].lon)];
-    if(mapProvider==="google" && googleMap){
-      const point={lat:destinationCoords[0],lng:destinationCoords[1]};
-      if(destinationMarker) destinationMarker.setPosition(point); else destinationMarker=new google.maps.Marker({position:point,map:googleMap,title:"Destino",label:"🏁"});
-      googleMap.setCenter(point);
-    }else{
-      if(!map) initLeaflet();
-      if(destinationMarker) destinationMarker.setLatLng(destinationCoords); else destinationMarker=L.marker(destinationCoords).addTo(map).bindPopup("Destino");
-      map.setView(destinationCoords,14);
-    }
-    mapMsg.textContent="Destino encontrado. Calculando a rota mais rápida...";
-    if(originCoords) await drawRoute(); else mapMsg.textContent="Destino encontrado. Agora toque em 'Minha localização'.";
-  }catch(e){mapMsg.textContent="Não foi possível localizar o destino agora.";}
-}
-
-async function drawRoute(){
-  if(!originCoords || !destinationCoords) return;
-  if(mapProvider==="google" && googleDirections){
-    return new Promise(resolve=>{
-      googleDirections.route({origin:{lat:originCoords[0],lng:originCoords[1]},destination:{lat:destinationCoords[0],lng:destinationCoords[1]},travelMode:google.maps.TravelMode.DRIVING,provideRouteAlternatives:true,drivingOptions:{departureTime:new Date(),trafficModel:"bestguess"}},(result,status)=>{
-        if(status!=="OK"||!result?.routes?.length){mapMsg.textContent="Rota não encontrada.";resolve();return;}
-        googleRouteRenderer.setDirections(result);
-        const leg=result.routes[0].legs[0];
-        const meters=leg.distance?.value||0;
-        const duration=leg.duration_in_traffic?.value||leg.duration?.value||0;
-        const km=meters/1000, mins=Math.max(1,Math.round(duration/60));
-        const fare=Math.max(5,Math.round(km));
-        distanceValue.textContent=km.toFixed(1).replace(".",",")+" km";
-        timeValue.textContent=mins+" min";
-        fareValue.textContent="R$ "+fare.toFixed(2).replace(".",",");
-        ridePrice.value=String(Math.max(10,fare));routeInfo.style.display="flex";
-        mapMsg.textContent=result.routes.length>1?"Rota mais rápida calculada. Há alternativas disponíveis.":"Rota mais rápida calculada com previsão de trânsito.";
-        resolve();
-      });
-    });
-  }
-  try{
-    const url="https://router.project-osrm.org/route/v1/driving/"+originCoords[1]+","+originCoords[0]+";"+destinationCoords[1]+","+destinationCoords[0]+"?overview=full&alternatives=true&geometries=geojson";
-    const r=await fetch(url),data=await r.json();
-    if(!data.routes?.length){mapMsg.textContent="Rota não encontrada.";return}
-    const route=data.routes[0];
-    if(routeLayer) routeLayer.remove();
-    routeLayer=L.geoJSON(route.geometry,{style:{weight:7}}).addTo(map);
-    map.fitBounds(routeLayer.getBounds(),{padding:[20,20]});
-    const km=route.distance/1000,mins=Math.round(route.duration/60),fare=Math.max(5,Math.round(km));
-    distanceValue.textContent=km.toFixed(1).replace(".",",")+" km";timeValue.textContent=mins+" min";fareValue.textContent="R$ "+fare.toFixed(2).replace(".",",");ridePrice.value=String(Math.max(10,fare));routeInfo.style.display="flex";
-    mapMsg.textContent=data.routes.length>1?"Rota mais rápida calculada. Há alternativas no serviço de rota.":"Rota calculada.";
-  }catch(e){mapMsg.textContent="Não foi possível calcular a rota.";}
-}
-
-function clearRoute(){
-  destinationCoords=null;
-  if(destinationMarker){destinationMarker.remove();destinationMarker=null}
-  if(routeLayer){routeLayer.remove();routeLayer=null}
-  routeInfo.style.display="none";
-  mapMsg.textContent="Destino removido.";
-}
-
-async function requestRide(){
-  const destination=rideDestination.value.trim();
-  const price=Number(ridePrice.value);
-  if(!destination){rideMsg.textContent="Informe o destino.";return}
-  rideMsg.textContent="Solicitando...";
-  try{
-    const data=await api("/rides",{method:"POST",body:JSON.stringify({
-      destination,price,womenOnly:womenRide
-    })});
-    currentRide=data.ride;
-    rideMsg.textContent="Corrida solicitada.";
-    renderTrip();
-    show("trip");
-  }catch(e){rideMsg.textContent=e.message}
-}
-
-async function renderTrip(){
-  if(!currentRide)return;
-  try{
-    const data=await api("/rides/"+currentRide.id);
-    currentRide=data.ride;
-  }catch{}
-  tripCard.innerHTML=
-    "<div class='status'><b>"+currentRide.status+"</b></div>"+
-    "<h2>📍 "+escapeHtml(currentRide.destination)+"</h2>"+
-    "<p>Valor: <b>R$ "+Number(currentRide.price).toFixed(2).replace(".",",")+"</b></p>"+
-    (currentRide.women_only?"<p class='ok'>👩 Somente motorista mulher elegível.</p>":"")+
-    (currentRide.driver_name?"<p>Motorista: <b>"+escapeHtml(currentRide.driver_name)+"</b></p>":"<p class='muted'>Procurando motorista...</p>");
-}
-
-async function cancelRide(){
-  if(!currentRide)return;
-  if(currentRide.status==="cancelled"||currentRide.status==="finished")return;
-  if(!confirm("Deseja cancelar esta corrida?"))return;
-  try{
-    const data=await api("/rides/"+currentRide.id+"/cancel",{method:"POST",body:"{}"});
-    currentRide=data.ride;
-    tripCard.innerHTML=
-      "<div class='status'><b>cancelled</b></div>"+
-      "<p>Corrida cancelada.</p>"+
-      (Number(data.compensation||0)>0?"<p class='ok'>Compensação registrada para o motorista: <b>R$ 5,00</b>.</p>":"");
-    setTimeout(()=>show("home"),1200);
-  }catch(e){alert(e.message)}
-}
-
-async function loadAvailable(){
-  if(!currentUser||currentUser.role!=="driver")return;
-  try{
-    const data=await api("/rides/available");
-    available.innerHTML=data.rides.length?data.rides.map(r=>
-      "<div class='card'><b>"+(r.women_only?"👩 Corrida para mulheres":"🏍️ Corrida")+
-      "</b><p>"+escapeHtml(r.destination)+"</p><p>R$ "+Number(r.price).toFixed(2).replace(".",",")+"</p>"+
-      "<button class='btn primary' onclick='acceptRide("+r.id+")'>Aceitar</button></div>"
-    ).join(""):"<p class='muted'>Nenhuma corrida disponível para seu perfil.</p>";
-  }catch(e){available.textContent=e.message}
-}
-
-async function acceptRide(id){
-  try{
-    const data=await api("/rides/"+id+"/accept",{method:"POST",body:"{}"});
-    currentRide=data.ride;
-    renderDriverActive();
-    loadAvailable();
-  }catch(e){alert(e.message)}
-}
-
-function renderDriverActive(){
-  if(!currentRide){driverActive.innerHTML="<p class='muted'>Nenhuma corrida.</p>";return}
-  const status=currentRide.status;
-  let actions="";
-  if(status==="accepted") actions+="<button class='btn dark' onclick='rideAction(\"arrive\")'>Cheguei</button>";
-  if(status==="accepted"||status==="arrived") actions+="<button class='btn primary' onclick='rideAction(\"start\")'>Iniciar</button>";
-  if(status==="started") actions+="<button class='btn primary' onclick='rideAction(\"finish\")'>Finalizar corrida</button>";
-  if(["accepted","arrived","started"].includes(status)) actions+="<button class='btn outline' onclick='cancelDriverRide()'>Cancelar</button>";
-  driverActive.innerHTML="<p>Status: <b>"+escapeHtml(status)+"</b></p>"+
-    "<p>📍 "+escapeHtml(currentRide.destination)+"</p>"+actions;
-}
-
-async function cancelDriverRide(){
-  if(!currentRide||!confirm("Deseja cancelar esta corrida?"))return;
-  try{
-    const data=await api("/rides/"+currentRide.id+"/cancel",{method:"POST",body:"{}"});
-    currentRide=null;
-    renderDriverActive();
-    loadAvailable();
-    alert(data.message);
-  }catch(e){alert(e.message)}
-}
-
-async function rideAction(action){
-  if(!currentRide)return;
-  try{
-    const data=await api("/rides/"+currentRide.id+"/"+action,{method:"POST",body:"{}"});
-    currentRide=data.ride;
-    renderDriverActive();
-    if(currentRide.status==="finished") loadAvailable();
-  }catch(e){alert(e.message)}
-}
-
-async function saveDriverPreference(){
-  try{
-    const data=await api("/driver/preferences",{method:"PUT",body:JSON.stringify({serviceMode:serviceMode.value})});
-    prefMsg.textContent="Preferência salva.";
-    currentUser.service_mode=data.serviceMode;
-    loadAvailable();
-  }catch(e){prefMsg.textContent=e.message}
-}
-
-function logout(){
-  localStorage.removeItem("dyaby_token");token=null;currentUser=null;show("welcome");
-}
-
-function escapeHtml(s){
-  return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
-}
-
-let pollTimer=null;
-function startPolling(){
-  if(pollTimer) clearInterval(pollTimer);
-  pollTimer=setInterval(async()=>{
-    if(!currentUser) return;
-    if(currentUser.role==="driver" && document.getElementById("driverApproved").style.display!=="none"){
-      loadAvailable();
-    }
-    if(currentUser.role==="passenger" && currentRide){
-      try{
-        const data=await api("/rides/"+currentRide.id);
-        currentRide=data.ride;
-        renderTrip();
-      }catch{}
-    }
-  },5000);
-}
-window.addEventListener("load",()=>{loadMe().then(startPolling)});
-
-
-let adminToken = localStorage.getItem("dyaby_admin_token") || null;
-
-async function adminLogin(){
-  const msg = document.getElementById("adminLoginMsg");
-  msg.textContent = "Entrando...";
-  try {
-    const data = await api("/admin/login", {
-      method: "POST",
-      body: JSON.stringify({
-        email: document.getElementById("adminEmail").value.trim(),
-        password: document.getElementById("adminPassword").value
-      })
-    });
-    adminToken = data.token;
-    localStorage.setItem("dyaby_admin_token", adminToken);
-    msg.textContent = "";
-    show("admin");
-    await loadAdminDrivers();
-  } catch (e) {
-    msg.textContent = e.message;
-  }
-}
-
-async function adminApi(path, options = {}){
-  const headers = Object.assign(
-    {"Content-Type":"application/json"},
-    options.headers || {},
-    adminToken ? {"Authorization":"Bearer " + adminToken} : {}
-  );
-  const res = await fetch(API + path, Object.assign({}, options, {headers}));
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    if (res.status === 401) adminLogout(false);
-    throw new Error(data.error || "Erro administrativo");
-  }
-  return data;
-}
-
-async function loadAdminDrivers(){
-  const box = document.getElementById("adminDrivers");
-  box.textContent = "Carregando...";
-  try {
-    const data = await adminApi("/admin/drivers");
-    if (!data.drivers.length) {
-      box.innerHTML = '<p class="muted">Nenhum motorista cadastrado.</p>';
-      return;
-    }
-    box.innerHTML = data.drivers.map(d => {
-      const status = d.status || "pending";
-      const pendingApproval = status !== "active" && status !== "rejected";
-      const label = status === "active" ? "✅ Aprovado" :
-                    status === "rejected" ? "❌ Rejeitado" : "⏳ Pendente";
-      return `<div class="card" style="margin:10px 0;background:#0e0e0e">
-        <b>${escapeHtml(d.name || "")}</b>
-        <div class="small">${escapeHtml(d.email || "")}</div>
-        <div class="small">CPF: ${escapeHtml(d.cpf || "—")} · WhatsApp: ${escapeHtml(d.phone || "—")}</div>
-        <div class="small">CNH: ${escapeHtml(d.cnh || "—")} · Moto: ${escapeHtml(d.vehicle_model || "—")} · Placa: ${escapeHtml(d.plate || "—")}</div>
-        <p>${label}</p>
-        ${pendingApproval ? `<div class="row">
-          <button class="btn primary" style="width:48%" onclick="approveDriver(${Number(d.id)})">Aprovar</button>
-          <button class="btn outline" style="width:48%" onclick="rejectDriver(${Number(d.id)})">Rejeitar</button>
-        </div>` : ""}
-      </div>`;
-    }).join("");
-  } catch (e) {
-    box.innerHTML = '<p class="message">' + escapeHtml(e.message) + '</p>';
-  }
-}
-
-async function approveDriver(id){
-  try {
-    await adminApi(`/admin/drivers/${id}/approve`, {method:"POST"});
-    alert("Motorista aprovado com sucesso.");
-    await loadAdminDrivers();
-  } catch (e) {
-    alert(e.message);
-  }
-}
-
-async function rejectDriver(id){
-  if (!confirm("Rejeitar este cadastro de motorista?")) return;
-  try {
-    await adminApi(`/admin/drivers/${id}/reject`, {method:"POST"});
-    await loadAdminDrivers();
-  } catch (e) {
-    alert(e.message);
-  }
-}
-
-function adminLogout(goWelcome = true){
-  adminToken = null;
-  localStorage.removeItem("dyaby_admin_token");
-  if (goWelcome) show("welcome");
-}
-
-</script>
-</body>
-</html>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>DYABY — Mobilidade que aproxima.</title><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><style>
+:root{--bg:#070707;--card:#151515;--gold:#ffc400;--pink:#ff4f9a;--white:#fff;--muted:#aaa;--line:#292929;--green:#36d98a;--red:#ff5d5d}*{box-sizing:border-box}body{margin:0;background:#000;color:#fff;font-family:Arial,Helvetica,sans-serif}.app{max-width:430px;min-height:100vh;margin:auto;background:var(--bg);overflow:hidden}.screen{display:none;min-height:100vh;padding:22px 18px 100px}.screen.active{display:block}.row{display:flex;align-items:center;justify-content:space-between;gap:10px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.small{color:var(--muted);font-size:13px}.muted{color:var(--muted)}h1{font-size:28px;margin:6px 0 12px}h2{font-size:20px}.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin:12px 0}.input,.select{width:100%;padding:14px;border-radius:12px;border:1px solid #333;background:#0e0e0e;color:#fff;margin:6px 0 10px;font-size:16px}.btn{border:0;border-radius:13px;padding:14px 16px;width:100%;font-weight:700;font-size:15px;margin:5px 0;cursor:pointer}.primary{background:var(--gold);color:#000}.dark{background:#262626;color:#fff}.pink{background:var(--pink);color:#fff}.outline{background:transparent;color:#fff;border:1px solid #555}.badge{background:#222;border:1px solid #444;border-radius:999px;padding:8px 10px;font-size:12px}.topbrand{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}.topbrand b{font-size:30px;color:var(--gold)}.message{min-height:22px;padding:8px 0;color:#ff7b7b;font-size:14px}.price{font-size:20px;font-weight:800;color:var(--gold)}.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(430px,100%);display:flex;background:#111;border-top:1px solid #333;padding:8px;z-index:10}.nav button{flex:1;background:none;border:0;color:#aaa;padding:7px;font-size:12px}.nav b{display:block;color:#fff;font-size:20px}.hero{padding:18px;border-radius:22px;background:linear-gradient(145deg,#191919,#0b0b0b);border:1px solid #292929;min-height:190px;display:flex;flex-direction:column;justify-content:flex-end}.mascot{font-size:72px;margin-bottom:8px}.service{min-height:88px}.status{padding:10px;border-radius:10px;background:#111;border:1px solid #333}.ok{color:var(--green)}.danger{color:var(--red)}.stat{padding:14px;border-radius:14px;background:#101010;border:1px solid #2b2b2b}.stat b{font-size:22px}.product img{width:100%;height:150px;object-fit:cover;border-radius:12px}.thumbs{display:flex;gap:7px}.thumbs img{width:32%;height:80px;object-fit:cover;border-radius:9px}.tabs{display:flex;gap:7px;overflow:auto;margin:8px 0}.tabs button{white-space:nowrap;background:#171717;color:#ddd;border:1px solid #333;border-radius:999px;padding:9px 12px}.tabs button.active{border-color:var(--gold);color:var(--gold)}#map,#radarMap{height:330px;border-radius:18px;overflow:hidden;border:1px solid #333;margin:10px 0}.map-modes{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.map-modes button{background:#171717;color:#ddd;border:1px solid #333;border-radius:10px;padding:9px 4px;font-size:11px}.map-modes button.active{border-color:var(--gold);color:var(--gold)}.route-info{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}.route-info div{text-align:center;background:#111;border:1px solid #333;border-radius:10px;padding:10px}.radar-pulse{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--green);box-shadow:0 0 0 6px rgba(54,217,138,.12);animation:pulse 1.4s infinite}@keyframes pulse{50%{transform:scale(1.4);opacity:.4}}.driver-card{padding:12px;border-top:1px solid #2b2b2b}.driver-card:first-child{border-top:0}.admin-side{font-size:12px;color:#aaa}
+</style></head><body><div class="app">
+<section id="welcome" class="screen active"><div class="hero"><div class="mascot">🐶🏍️</div><div class="small" style="color:var(--gold);font-weight:800">DYABY</div><h1>Mobilidade que aproxima.</h1><p class="muted">Corridas, entregas e serviços de moto.</p><button class="btn primary" onclick="show('login')">Entrar</button><button class="btn outline" onclick="show('register')">Criar conta</button></div></section>
+<section id="login" class="screen"><div class="topbrand"><b>DYABY</b><span class="badge">Acesso</span></div><h1>Entrar</h1><div class="card"><input id="loginEmail" class="input" type="email" placeholder="E-mail"><input id="loginPassword" class="input" type="password" placeholder="Senha"><button class="btn primary" onclick="login()">Entrar</button><div id="loginMsg" class="message"></div></div><button class="btn outline" onclick="show('register')">Criar conta</button><button class="btn dark" onclick="show('welcome')">Voltar</button></section>
+<section id="register" class="screen"><div class="topbrand"><b>DYABY</b><span class="badge">📝 Cadastro</span></div><h1>Criar sua conta</h1><p class="muted">Escolha como você vai usar o DYABY.</p><div class="card"><label class="small">Tipo de conta</label><select id="regRole" class="select" onchange="toggleRoleFields()"><option value="passenger">👤 Cliente</option><option value="driver">🏍️ Motorista / Entregador</option><option value="commerce">🏪 Comércio</option></select><input id="regName" class="input" placeholder="Nome completo"><input id="regCpf" class="input" placeholder="CPF"><input id="regPhone" class="input" placeholder="WhatsApp"><input id="regEmail" class="input" type="email" placeholder="E-mail"><input id="regPassword" class="input" type="password" placeholder="Senha (mínimo 6 caracteres)"><select id="regGender" class="select"><option value="">Sexo (opcional)</option><option value="female">Feminino</option><option value="male">Masculino</option><option value="other">Outro</option></select></div><div id="driverFields" class="card" style="display:none"><h2>🏍️ Documentação do motorista</h2><input id="regCnh" class="input" placeholder="CNH"><input id="regPlate" class="input" placeholder="Placa"><input id="regVehicle" class="input" placeholder="Modelo da moto"><label class="small">Selfie</label><input id="regSelfie" class="input" type="file" accept="image/*"><label class="small">Foto da CNH/documento</label><input id="regCnhFile" class="input" type="file" accept="image/*,.pdf"><label class="small">Documento da moto</label><input id="regVehicleFile" class="input" type="file" accept="image/*,.pdf"><select id="regServiceMode" class="select"><option value="all">👥 Mulheres e demais passageiros</option><option value="women_only">👩 Somente mulheres</option></select><p class="small">Documentos e aprovação administrativa serão obrigatórios.</p></div><div id="commerceFields" class="card" style="display:none"><h2>🏪 Dados do comércio</h2><input id="comLegal" class="input" placeholder="Razão social"><input id="comTrade" class="input" placeholder="Nome fantasia"><input id="comCnpj" class="input" placeholder="CNPJ"><input id="comCategory" class="input" placeholder="Categoria: restaurante, farmácia, loja..."><input id="comAddress" class="input" placeholder="Endereço do comércio"><label class="small">Documento do comércio</label><input id="comDoc" class="input" type="file" accept="image/*,.pdf"><label class="small">Logo/foto do comércio</label><input id="comLogo" class="input" type="file" accept="image/*"><p class="small">O comércio será analisado e aprovado pelo administrador.</p></div><button class="btn primary" onclick="register()">Criar conta</button><div id="regMsg" class="message"></div><button class="btn outline" onclick="show('login')">Já tenho uma conta</button><button class="btn dark" onclick="show('welcome')">Voltar</button></section>
+<section id="verify" class="screen"><div class="topbrand"><b>DYABY</b><span class="badge">📱 Verificação</span></div><h1>Confirme seu WhatsApp</h1><p class="muted">Enviamos um código de 6 dígitos para seu WhatsApp.</p><div class="card"><input id="otpCode" class="input" inputmode="numeric" maxlength="6" placeholder="Código de 6 dígitos"><button class="btn primary" onclick="verifyOtp()">Confirmar</button><button class="btn dark" onclick="resendOtp()">Enviar código novamente</button><div id="otpMsg" class="message"></div></div></section>
+<section id="home" class="screen"><div class="row"><div><span class="small">Olá!</span><h1 id="helloName">Cliente 👋</h1></div><span class="badge">Patos de Minas</span></div><div class="hero"><div class="mascot">🐶🏍️</div><b>O que você precisa hoje?</b><input id="homeDestination" class="input" placeholder="📍 Para onde vamos?"></div><h2>Serviços</h2><div class="card service row"><div>🏍️ <b>Corrida</b><div class="small">Transporte de passageiro</div></div><button class="btn primary" style="width:120px" onclick="openRide(false)">Pedir</button></div><div class="card service row"><div>📦 <b>Encomenda</b><div class="small">Pequenos volumes</div></div><button class="btn primary" style="width:120px" onclick="show('delivery')">Pedir</button></div><div class="card service row"><div>🍔 <b>Comida</b><div class="small">Comércios parceiros</div></div><button class="btn dark" style="width:120px" onclick="loadCatalog('food')">Ver</button></div><div class="card service row"><div>🍰 <b>Bolos e doces</b><div class="small">Pequenos negócios</div></div><button class="btn dark" style="width:120px" onclick="loadCatalog('cakes')">Ver</button></div><div class="card service row"><div>👩 <b>Corrida para mulheres</b><div class="small">Motorista mulher quando disponível</div></div><button class="btn pink" style="width:120px" onclick="openRide(true)">Pedir</button></div><div class="card"><b>💬 Ajuda</b><p class="muted">Fale com um agente.</p><button class="btn outline" onclick="show('help')">Ajuda e suporte</button></div></section>
+<section id="ride" class="screen"><div class="row"><h1>🏍️ Corrida</h1><button class="btn outline" style="width:100px" onclick="show('home')">← Voltar</button></div><div class="card"><div id="map"></div><div class="map-modes"><button id="mRoad" class="active" onclick="setMapMode('road')">🗺️ Normal</button><button id="mSat" onclick="setMapMode('satellite')">🛰️ Satélite</button><button id="mDark" onclick="setMapMode('dark')">🌙 Escuro</button><button id="mTraffic" onclick="setMapMode('traffic')">🚦 Trânsito</button></div><button class="btn dark" onclick="locateMe()">📍 Minha localização</button><input id="rideDestination" class="input" placeholder="📍 Destino"><button class="btn outline" onclick="findDestination()">Buscar destino no mapa</button><div class="route-info" id="routeInfo" style="display:none"><div><span class="small">Distância</span><br><b id="distanceValue">—</b></div><div><span class="small">Tempo</span><br><b id="timeValue">—</b></div><div><span class="small">Valor</span><br><b id="fareValue">—</b></div></div><select id="ridePrice" class="select"><option value="10">Calculando...</option></select><div id="womenNotice" class="status" style="display:none">👩 Somente motoristas mulheres elegíveis.</div><div id="mapMsg" class="small"></div></div><button class="btn primary" onclick="requestRide()">Pedir agora</button><div id="rideMsg" class="message"></div></section>
+<section id="trip" class="screen"><div class="row"><h1>Minha corrida</h1><button class="btn outline" style="width:100px" onclick="show('home')">← Voltar</button></div><div id="tripCard" class="card">Carregando...</div><div id="radarCard" class="card" style="display:none"><div class="row"><div><span class="radar-pulse"></span> <b id="radarTitle">Procurando motorista...</b><div class="small">Radar exclusivo do cliente</div></div></div><div id="radarMap"></div><div id="radarDrivers"></div></div><button class="btn outline" onclick="cancelRide()">Cancelar corrida</button><button class="btn dark" onclick="show('help')">Ajuda</button></section>
+<section id="delivery" class="screen"><div class="row"><h1>📦 Encomenda</h1><button class="btn outline" style="width:100px" onclick="show('home')">← Voltar</button></div><div class="card"><p class="muted">A taxa é calculada automaticamente pela distância. Você verá o valor antes de confirmar.</p><button class="btn dark" onclick="locateDelivery()">📍 Usar minha localização</button><input id="deliveryAddress" class="input" placeholder="Endereço de entrega"><input id="deliveryKm" class="input" type="number" step="0.1" placeholder="Distância calculada (km)" readonly><button class="btn primary" onclick="quoteDelivery()">Calcular entrega</button><div id="deliveryQuote" class="status">—</div></div></section>
+<section id="catalog" class="screen"><div class="row"><h1>🍔 Comércios</h1><button class="btn outline" style="width:100px" onclick="show('home')">← Voltar</button></div><div id="catalogList"></div></section>
+<section id="driver" class="screen"><div class="topbrand"><b>DYABY</b><span class="badge">🏍️ Motorista / Entregador</span></div><h1>Área do motorista</h1><div class="card"><b id="driverName"></b><div id="driverStatus" class="small"></div></div><div id="driverPending" class="card" style="display:none">⏳ Cadastro aguardando aprovação do administrador.</div><div id="driverApproved" style="display:none"><div class="tabs"><button onclick="driverTab('rides')">🏍️ Corridas</button><button onclick="driverTab('deliveries')">📦 Entregas</button><button onclick="driverTab('earnings')">💰 Ganhos</button><button onclick="driverTab('profile')">👤 Perfil</button></div><div id="driverRides" class="card"><div class="row"><b>Corridas disponíveis</b><button class="btn dark" style="width:100px" onclick="loadAvailable()">Atualizar</button></div><div id="available"></div><hr><b>Minha corrida ativa</b><div id="driverActive"></div></div><div id="driverDeliveries" class="card" style="display:none"><div class="row"><h2>📦 Entregas</h2><button class="btn dark" style="width:100px" onclick="loadAvailableDeliveries()">Atualizar</button></div><div id="availableDeliveries"></div><hr><b>Minha entrega ativa</b><div id="driverDeliveryActive"><p class="muted">Nenhuma entrega.</p></div></div><div id="driverEarnings" class="card" style="display:none"><h2>💰 Ganhos</h2><div id="earningsBox">Carregando...</div></div><div id="driverProfile" class="card" style="display:none"><h2>Perfil do motorista</h2><p>🏍️ Corridas</p><p>📦 Entregas / Delivery / Food</p><p>🚕 Transporte</p><select id="serviceMode" class="select"><option value="all">👥 Mulheres e demais passageiros</option><option value="women_only">👩 Somente mulheres</option></select><button class="btn primary" onclick="saveDriverPreference()">Salvar preferência</button><div class="small">Alterações sensíveis dependem de autorização administrativa.</div></div></div><button class="btn outline" onclick="logout()">Sair</button></section>
+<section id="commerce" class="screen"><div class="topbrand"><b>DYABY</b><span class="badge">🏪 Comércio</span></div><h1 id="commerceName">Meu comércio</h1><div class="card"><div id="commerceStatus"></div><p class="muted">Aqui você somente vende seus produtos. Não há corridas ou radar nesta conta.</p></div><div class="tabs"><button onclick="commerceTab('products')">🍔 Produtos</button><button onclick="commerceTab('orders')">🛒 Pedidos</button><button onclick="commerceTab('sales')">💰 Vendas</button><button onclick="commerceTab('profile')">🏪 Perfil</button></div><div id="comProducts"><div class="card"><h2>Cadastrar produto</h2><input id="pName" class="input" placeholder="Nome do produto"><textarea id="pDesc" class="input" placeholder="Descrição"></textarea><input id="pPrice" class="input" type="number" step="0.01" placeholder="Preço"><input id="pCat" class="input" placeholder="Categoria"><input id="p1" class="input" type="file" accept="image/*"><input id="p2" class="input" type="file" accept="image/*"><input id="p3" class="input" type="file" accept="image/*"><div class="small">Máximo de 3 fotos por produto.</div><button class="btn primary" onclick="addProduct()">Cadastrar produto</button></div><div id="productList"></div></div><div id="comOrders" style="display:none"><div class="card"><h2>Pedidos</h2><div id="commerceOrders">Carregando...</div></div></div><div id="comSales" style="display:none"><div class="card"><h2>Vendas</h2><div id="salesBox">Veja valores e taxas da DYABY em cada pedido.</div></div></div><div id="comProfile" style="display:none"><div class="card"><h2>Dados do comércio</h2><div id="commerceProfileData"></div></div></div><button class="btn outline" onclick="logout()">Sair</button></section>
+<section id="profile" class="screen"><h1>Meu perfil</h1><div class="card"><b id="profileName"></b><div class="small" id="profileRole"></div><input id="profileAddress" class="input" placeholder="Endereço"><button class="btn primary" onclick="saveProfile()">Salvar dados</button><p class="small">CPF e dados básicos permanecem registrados. Foto de perfil só pode ser alterada mediante solicitação e aprovação.</p><input id="profilePhoto" class="input" type="file" accept="image/*"><button class="btn outline" onclick="requestPhotoChange()">Solicitar troca da foto</button><div id="profileMsg" class="message"></div></div><div id="passengerProfileServices" class="card" style="display:none"><h2>Serviços</h2><p>🏍️ Corridas</p><p>📦 Encomendas</p><p>🍔 Comida</p><p>🍰 Bolos e doces</p><p>👩 Corrida para mulheres</p></div><button class="btn dark" onclick="show('help')">Ajuda e suporte</button><button class="btn outline" onclick="logout()">Sair</button></section>
+<section id="help" class="screen"><div class="row"><h1>Ajuda</h1><button class="btn outline" style="width:100px" onclick="goBackHome()">← Voltar</button></div><div class="card"><input id="helpSubject" class="input" placeholder="Assunto"><textarea id="helpMessage" class="input" placeholder="Descreva o que aconteceu"></textarea><button class="btn primary" onclick="sendHelp()">Enviar para atendimento</button><div id="helpMsg" class="message"></div></div></section>
+<section id="adminLogin" class="screen"><div class="topbrand"><b>DYABY</b><span class="badge">🔐 Administração</span></div><h1>Acesso administrativo</h1><div class="card"><input id="adminEmail" class="input" type="email" placeholder="E-mail administrativo"><input id="adminPassword" class="input" type="password" placeholder="Senha"><button class="btn primary" onclick="adminLogin()">Entrar</button><div id="adminLoginMsg" class="message"></div></div></section>
+<section id="admin" class="screen"><div class="topbrand"><b>DYABY</b><span class="badge">🛠️ Admin</span></div><h1>Painel administrativo</h1><div class="grid2" id="adminStats"></div><div class="tabs"><button onclick="adminTab('drivers')">🏍️ Motoristas</button><button onclick="adminTab('commerce')">🏪 Comercios</button><button onclick="adminTab('help')">🆘 Ajuda</button><button onclick="adminTab('photos')">📷 Fotos</button><button onclick="adminTab('settings')">💰 Taxas</button></div><div id="adminPanel"></div></section>
+<nav id="nav" class="nav" style="display:none"><button onclick="showHomeByRole()"><b>⌂</b>Início</button><button onclick="openRide(false)" id="navRide"><b>🏍</b>Corrida</button><button onclick="showProfileByRole()"><b>♙</b>Perfil</button><button onclick="show('help')"><b>?</b>Ajuda</button></nav>
+</div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
+const API='/api';let token=localStorage.getItem('dyaby_token'),currentUser=null,currentRide=null,womenRide=false,originCoords=null,destinationCoords=null,map=null,routeLayer=null,originMarker=null,destinationMarker=null,radarMap=null,radarTimer=null,driverTimer=null,adminToken=localStorage.getItem('dyaby_admin_token');
+const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+function updateNav(){const r=currentUser?.role;const hideRide=r==='commerce';if($('navRide'))$('navRide').style.display=hideRide?'none':'block';}function show(id){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));$(id)?.classList.add('active');$('nav').style.display=['welcome','login','register','verify','adminLogin','admin'].includes(id)?'none':'flex';updateNav();scrollTo(0,0)}
+async function api(path,opt={}){opt.headers=opt.headers||{};if(!(opt.body instanceof FormData))opt.headers['Content-Type']='application/json';if(token)opt.headers.Authorization='Bearer '+token;const r=await fetch(API+path,opt);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Erro na solicitação.');return d}
+function toggleRoleFields(){const r=$('regRole').value;$('driverFields').style.display=r==='driver'?'block':'none';$('commerceFields').style.display=r==='commerce'?'block':'none'}
+async function register(){const msg=$('regMsg');try{const role=$('regRole').value;const body={role,name:$('regName').value.trim(),cpf:$('regCpf').value.trim(),phone:$('regPhone').value.trim(),email:$('regEmail').value.trim(),password:$('regPassword').value,gender:$('regGender').value,serviceMode:$('regServiceMode')?.value,cnh:$('regCnh')?.value,plate:$('regPlate')?.value,vehicleModel:$('regVehicle')?.value,commerce:{legalName:$('comLegal')?.value,tradeName:$('comTrade')?.value,cnpj:$('comCnpj')?.value,category:$('comCategory')?.value,address:$('comAddress')?.value}};const d=await api('/auth/register',{method:'POST',body:JSON.stringify(body)});token=d.token;localStorage.setItem('dyaby_token',token);if(role==='driver'&&($('regSelfie').files[0]||$('regCnhFile').files[0]||$('regVehicleFile').files[0])){const f=new FormData();if($('regSelfie').files[0])f.append('selfie',$('regSelfie').files[0]);if($('regCnhFile').files[0])f.append('cnh',$('regCnhFile').files[0]);if($('regVehicleFile').files[0])f.append('vehicleDocument',$('regVehicleFile').files[0]);await api('/driver/documents',{method:'POST',body:f})}if(role==='commerce'&&($('comDoc').files[0]||$('comLogo').files[0])){const f=new FormData();if($('comDoc').files[0])f.append('businessDocument',$('comDoc').files[0]);if($('comLogo').files[0])f.append('logo',$('comLogo').files[0]);await api('/commerce/documents',{method:'POST',body:f})}msg.textContent=d.message||'Cadastro criado.';if(d.needsVerification){show('verify');if(d.devCode)$('otpMsg').textContent='Código de teste: '+d.devCode}else await loadMe()}catch(e){msg.textContent=e.message}}
+async function login(){try{const d=await api('/auth/login',{method:'POST',body:JSON.stringify({email:$('loginEmail').value.trim(),password:$('loginPassword').value})});token=d.token;localStorage.setItem('dyaby_token',token);if(d.needsVerification){show('verify');return}await loadMe()}catch(e){$('loginMsg').textContent=e.message}}
+async function verifyOtp(){try{const d=await api('/auth/verify-whatsapp',{method:'POST',body:JSON.stringify({code:$('otpCode').value})});if(d.ok){$('otpMsg').textContent='WhatsApp verificado.';await loadMe()}}catch(e){$('otpMsg').textContent=e.message}}
+async function resendOtp(){try{const d=await api('/auth/resend-otp',{method:'POST',body:'{}'});$('otpMsg').textContent=d.devCode?'Código de teste: '+d.devCode:'Novo código enviado.'}catch(e){$('otpMsg').textContent=e.message}}
+async function loadMe(){if(!token){show('welcome');return}try{const d=await api('/me');currentUser=d.user;$('helloName').textContent=(currentUser.name||'Cliente')+' 👋';$('profileName').textContent=currentUser.name||'';$('profileRole').textContent=currentUser.role==='passenger'?'Cliente':currentUser.role==='driver'?'Motorista / Entregador':'Comércio';$('profileAddress').value=currentUser.address||'';if(currentUser.role==='passenger'){show('home');$('passengerProfileServices').style.display='block'}else if(currentUser.role==='driver'){show('driver');setupDriver(d)}else{show('commerce');setupCommerce(d)}startHeartbeat()}catch(e){localStorage.removeItem('dyaby_token');token=null;show('login')}}
+function showHomeByRole(){if(currentUser?.role==='passenger')show('home');else if(currentUser?.role==='driver')show('driver');else show('commerce')}function showProfileByRole(){if(currentUser?.role==='passenger')show('profile');else if(currentUser?.role==='driver'){show('driver');driverTab('profile')}else show('commerce')}
+function goBackHome(){showHomeByRole()}
+function setupDriver(d){$('driverName').textContent=currentUser.name;$('driverStatus').textContent=currentUser.status==='active'?'Cadastro aprovado.':'Cadastro pendente.';$('driverPending').style.display=currentUser.status==='active'?'none':'block';$('driverApproved').style.display=currentUser.status==='active'?'block':'none';if(d.driver)$('serviceMode').value=d.driver.service_mode||'all';if(currentUser.status==='active'){loadAvailable();loadAvailableDeliveries();startDriverLocation()}}
+function setupCommerce(d){$('commerceName').textContent=d.commerce?.trade_name||currentUser.name;$('commerceStatus').innerHTML=currentUser.status==='active'?'<span class="ok">✅ Comércio aprovado</span>':'<span>⏳ Comércio aguardando aprovação.</span>';loadProducts();loadCommerceOrders();$('commerceProfileData').innerHTML='<b>'+esc(d.commerce?.trade_name||'')+'</b><p class="small">'+esc(d.commerce?.category||'')+'</p><p class="small">'+esc(d.commerce?.cnpj||'')+'</p><p class="small">'+esc(d.commerce?.address||'')+'</p>'}
+function startHeartbeat(){if(window._hb)clearInterval(window._hb);window._hb=setInterval(()=>{if(token)fetch(API+'/me',{headers:{Authorization:'Bearer '+token}}).catch(()=>{})},60000)}
+function startDriverLocation(){if(driverTimer)clearInterval(driverTimer);updateDriverLocation();driverTimer=setInterval(updateDriverLocation,10000)}function updateDriverLocation(){if(currentUser?.role!=='driver'||currentUser.status!=='active'||!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(p=>api('/driver/location',{method:'POST',body:JSON.stringify({latitude:p.coords.latitude,longitude:p.coords.longitude})}).catch(()=>{}),()=>{},{enableHighAccuracy:true,maximumAge:10000,timeout:8000})}
+function initMap(){if(map){map.invalidateSize();return}map=L.map('map').setView([-18.5789,-46.518],13);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);locateMe()}
+function openRide(w){if(currentUser?.role!=='passenger'){alert('Somente clientes podem pedir corrida.');return}womenRide=w;$('womenNotice').style.display=w?'block':'none';$('rideDestination').value=$('homeDestination').value||'';show('ride');setTimeout(initMap,150)}
+function setMapMode(m){['road','satellite','dark','traffic'].forEach(x=>$('m'+x[0].toUpperCase()+x.slice(1))?.classList.toggle('active',x===m));if(!map)return;if(m==='satellite'){if(window._sat){map.removeLayer(window._sat)}window._sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19}).addTo(map)}else if(m==='dark'){if(window._dark){map.removeLayer(window._dark)}window._dark=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:20}).addTo(map)}else if(m==='road'){if(window._sat)map.removeLayer(window._sat);if(window._dark)map.removeLayer(window._dark)}else $('mapMsg').textContent='Trânsito real será ativado quando o Google Maps estiver configurado.'}
+function locateMe(){if(!navigator.geolocation){$('mapMsg').textContent='Localização não disponível.';return}navigator.geolocation.getCurrentPosition(p=>{originCoords=[p.coords.latitude,p.coords.longitude];if(!map)initMap();if(originMarker)originMarker.setLatLng(originCoords);else originMarker=L.marker(originCoords).addTo(map).bindPopup('Você');map.setView(originCoords,15);$('mapMsg').textContent='Localização encontrada.';if(destinationCoords)drawRoute()},()=>{$('mapMsg').textContent='Permita a localização no navegador.'},{enableHighAccuracy:true,timeout:10000,maximumAge:30000})}
+async function findDestination(){const t=$('rideDestination').value.trim();if(!t)return;$('mapMsg').textContent='Buscando destino...';try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q='+encodeURIComponent(t));const d=await r.json();if(!d.length)throw 0;destinationCoords=[Number(d[0].lat),Number(d[0].lon)];if(destinationMarker)destinationMarker.setLatLng(destinationCoords);else destinationMarker=L.marker(destinationCoords).addTo(map).bindPopup('Destino');map.setView(destinationCoords,14);await drawRoute()}catch{$('mapMsg').textContent='Destino não encontrado.'}}
+async function drawRoute(){if(!originCoords||!destinationCoords)return;try{const u='https://router.project-osrm.org/route/v1/driving/'+originCoords[1]+','+originCoords[0]+';'+destinationCoords[1]+','+destinationCoords[0]+'?overview=full&alternatives=true&geometries=geojson';const d=await fetch(u).then(r=>r.json());const rt=d.routes?.[0];if(!rt)throw 0;if(routeLayer)routeLayer.remove();routeLayer=L.geoJSON(rt.geometry,{style:{weight:7}}).addTo(map);map.fitBounds(routeLayer.getBounds(),{padding:[20,20]});const km=rt.distance/1000,mins=Math.max(1,Math.round(rt.duration/60)),fare=Math.max(10,Math.round(km));$('distanceValue').textContent=km.toFixed(1).replace('.',',')+' km';$('timeValue').textContent=mins+' min';$('fareValue').textContent='R$ '+fare.toFixed(2).replace('.',',');$('ridePrice').innerHTML='<option value="'+fare+'">Moto — R$ '+fare.toFixed(2).replace('.',',')+'</option>';$('routeInfo').style.display='grid';$('mapMsg').textContent='Rota calculada. Valor igual para passageiro e motorista.'}catch{$('mapMsg').textContent='Não foi possível calcular a rota.'}}
+async function requestRide(){const destination=$('rideDestination').value.trim(),distance=parseFloat(($('distanceValue').textContent||'0').replace(',','.'));if(!destination||!Number.isFinite(distance)||distance<=0){$('rideMsg').textContent='Informe o destino e calcule a rota.';return;}$('rideMsg').textContent='Solicitando...';try{const d=await api('/rides',{method:'POST',body:JSON.stringify({destination,distanceKm:distance,womenOnly:womenRide,origin:'Minha localização'})});currentRide=d.ride;await renderTrip();show('trip');startRadar()}catch(e){$('rideMsg').textContent=e.message}}
+async function renderTrip(){if(!currentRide)return;const d=await api('/rides/'+currentRide.id);currentRide=d.ride;$('tripCard').innerHTML='<div class="status"><b>'+esc(currentRide.status)+'</b></div><h2>📍 '+esc(currentRide.destination)+'</h2><p>📏 '+Number(currentRide.distance_km||0).toFixed(1)+' km</p><p class="price">Valor: R$ '+Number(currentRide.price).toFixed(2).replace('.',',')+'</p>'+(currentRide.driver_name?'<div style="display:flex;gap:10px;align-items:center">'+(currentRide.driver_photo?'<img src="'+esc(currentRide.driver_photo)+'" style="width:56px;height:56px;border-radius:50%;object-fit:cover">':'<div style="font-size:40px">🏍️</div>')+'<div><b>'+esc(currentRide.driver_name)+'</b><div class="small">Motorista</div></div></div>':'<p class="muted">Procurando motorista...</p>');if(currentRide.driver_name)stopRadar()}
+function initRadar(){if(radarMap){radarMap.invalidateSize();return}radarMap=L.map('radarMap').setView(originCoords||[-18.5789,-46.518],14);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(radarMap)}
+async function loadRadar(){if(!currentRide||currentRide.status!=='searching'||!originCoords)return;initRadar();try{const d=await api('/drivers/radar?lat='+originCoords[0]+'&lng='+originCoords[1]);$('radarTitle').textContent=d.drivers.length?d.drivers.length+' motorista(s) próximos':'Procurando motorista...';$('radarDrivers').innerHTML=d.drivers.map(x=>'<div class="driver-card" style="display:flex;gap:10px;align-items:center">'+(x.profile_photo_path?'<img src="'+esc(x.profile_photo_path)+'" style="width:46px;height:46px;border-radius:50%;object-fit:cover">':'<div style="font-size:32px">🏍️</div>')+'<div><b>'+esc(x.name)+'</b><div class="small">'+Number(x.distance_km).toFixed(1)+' km · ~'+x.eta_min+' min · '+esc(x.vehicle_model||'Moto')+'</div></div></div>').join('')||'<p class="muted">Nenhum motorista próximo ainda.</p>'}catch{}}
+function startRadar(){if(radarTimer)clearInterval(radarTimer);$('radarCard').style.display='block';loadRadar();radarTimer=setInterval(()=>{if(currentRide?.status==='searching')loadRadar()},5000)}function stopRadar(){if(radarTimer)clearInterval(radarTimer);radarTimer=null;$('radarCard').style.display='none'}
+async function cancelRide(){if(!currentRide)return;if(!confirm('Cancelar corrida?'))return;try{const d=await api('/rides/'+currentRide.id+'/cancel',{method:'POST',body:'{}'});currentRide=d.ride;stopRadar();await renderTrip()}catch(e){alert(e.message)}}
+async function loadAvailable(){if(currentUser?.role!=='driver')return;try{const d=await api('/rides/available');$('available').innerHTML=d.rides.length?d.rides.map(r=>'<div class="card"><div class="row"><b>🏍️ Corrida</b><span class="price">R$ '+Number(r.price).toFixed(2).replace('.',',')+'</span></div><div style="display:flex;gap:10px;align-items:center">'+(r.passenger_photo?'<img src="'+esc(r.passenger_photo)+'" style="width:52px;height:52px;border-radius:50%;object-fit:cover">':'<div style="font-size:38px">👤</div>')+'<div><b>'+esc(r.passenger_name)+'</b><div class="small">Solicitante</div></div></div><p>📏 '+Number(r.distance_km||0).toFixed(1)+' km</p><p>📍 '+esc(r.destination)+'</p><button class="btn primary" onclick="acceptRide('+r.id+')">Aceitar</button></div>').join(''):'<p class="muted">Nenhuma corrida disponível.</p>'}catch(e){$('available').textContent=e.message}}
+async function acceptRide(id){try{const d=await api('/rides/'+id+'/accept',{method:'POST',body:'{}'});currentRide=d.ride;renderDriverActive();loadAvailable()}catch(e){alert(e.message)}}
+function renderDriverActive(){if(!currentRide){$('driverActive').innerHTML='<p class="muted">Nenhuma corrida.</p>';return}let a='';if(currentRide.status==='accepted')a+='<button class="btn dark" onclick="rideAction(\'arrive\')">Cheguei</button>';if(['accepted','arrived'].includes(currentRide.status))a+='<button class="btn primary" onclick="rideAction(\'start\')">Iniciar corrida</button>';if(currentRide.status==='started')a+='<button class="btn primary" onclick="rideAction(\'finish\')">Finalizar corrida</button>';if(['accepted','arrived','started'].includes(currentRide.status))a+='<button class="btn outline" onclick="cancelDriverRide()">Cancelar</button>';$('driverActive').innerHTML='<p>Status: <b>'+esc(currentRide.status)+'</b></p><p>👤 '+esc(currentRide.passenger_name||'Passageiro')+'</p><p>📏 '+Number(currentRide.distance_km||0).toFixed(1)+' km</p><p>💰 <span class="price">R$ '+Number(currentRide.price).toFixed(2).replace('.',',')+'</span></p>'+a}
+async function rideAction(a){try{const d=await api('/rides/'+currentRide.id+'/'+a,{method:'POST',body:'{}'});currentRide=d.ride;renderDriverActive();loadAvailable()}catch(e){alert(e.message)}}async function cancelDriverRide(){if(!confirm('Cancelar corrida?'))return;try{await api('/rides/'+currentRide.id+'/cancel',{method:'POST',body:'{}'});currentRide=null;renderDriverActive();loadAvailable()}catch(e){alert(e.message)}}
+function driverTab(t){['driverRides','driverDeliveries','driverEarnings','driverProfile'].forEach(x=>$(x).style.display='none');$('driver'+t[0].toUpperCase()+t.slice(1)).style.display='block';if(t==='earnings')loadEarnings();if(t==='deliveries')loadAvailableDeliveries()}
+async function saveDriverPreference(){try{await api('/driver/preferences',{method:'PUT',body:JSON.stringify({serviceMode:$('serviceMode').value})});alert('Preferência salva.')}catch(e){alert(e.message)}}async function loadEarnings(){try{const d=await api('/driver/earnings');$('earningsBox').innerHTML='<p>🏍️ Corridas: '+d.rides.count+' — <b>R$ '+Number(d.rides.total).toFixed(2).replace('.',',')+'</b></p><p>📦 Entregas: '+d.orders.count+' — <b>R$ '+Number(d.orders.total).toFixed(2).replace('.',',')+'</b></p>'}catch(e){$('earningsBox').textContent=e.message}}
+async function loadAvailableDeliveries(){if(currentUser?.role!=='driver')return;try{const d=await api('/orders/available');$('availableDeliveries').innerHTML=d.orders.length?d.orders.map(o=>`<div class="card"><div class="row"><b>📦 ${esc(o.trade_name)}</b><span class="price">R$ ${Number(o.driver_payout).toFixed(2).replace('.',',')}</span></div><div style="display:flex;gap:10px;align-items:center">${o.customer_photo?`<img src="${esc(o.customer_photo)}" style="width:48px;height:48px;border-radius:50%;object-fit:cover">`:'<div style="font-size:32px">👤</div>'}<div><b>${esc(o.customer_name)}</b><div class="small">Cliente</div></div></div><p>📏 ${Number(o.delivery_km).toFixed(1)} km</p><p>💰 Entregador recebe: <b class="price">R$ ${Number(o.driver_payout).toFixed(2).replace('.',',')}</b></p><button class="btn primary" onclick="acceptDelivery(${o.id})">Aceitar entrega</button></div>`).join(''):'<p class="muted">Nenhuma entrega disponível.</p>'}catch(e){$('availableDeliveries').textContent=e.message}}async function acceptDelivery(id){try{const d=await api('/orders/'+id+'/accept',{method:'POST',body:'{}'});$('driverDeliveryActive').innerHTML=`<p>Status: <b>${esc(d.order.status)}</b></p><p>🏪 Pedido #${d.order.id}</p><button class="btn primary" onclick="deliveryAction('pickup',${d.order.id})">Validar coleta</button>`;loadAvailableDeliveries()}catch(e){alert(e.message)}}async function deliveryAction(a,id){try{const d=await api('/orders/'+id+'/'+a,{method:'POST',body:'{}'});if(a==='pickup')$('driverDeliveryActive').innerHTML=`<p>Status: <b>${esc(d.order.status)}</b></p><button class="btn primary" onclick="deliveryAction('deliver',${d.order.id})">Validar entrega</button>`;else $('driverDeliveryActive').innerHTML='<p class="ok">✅ Entrega concluída.</p>';loadAvailableDeliveries()}catch(e){alert(e.message)}}
+function commerceTab(t){['comProducts','comOrders','comSales','comProfile'].forEach(x=>$(x).style.display='none');$('com'+t[0].toUpperCase()+t.slice(1)).style.display='block';if(t==='orders')loadCommerceOrders();if(t==='sales')loadCommerceSales()}async function loadCommerceSales(){try{const d=await api('/commerce/orders');const total=d.orders.filter(o=>o.status!=='cancelled').reduce((a,o)=>a+Number(o.subtotal),0);const fees=d.orders.filter(o=>o.status!=='cancelled').reduce((a,o)=>a+Number(o.platform_fee),0);$('salesBox').innerHTML='<p>Vendas: <b>R$ '+total.toFixed(2).replace('.',',')+'</b></p><p>Taxas DYABY: <b>R$ '+fees.toFixed(2).replace('.',',')+'</b></p><p>Comércio após taxa: <b>R$ '+(total-fees).toFixed(2).replace('.',',')+'</b></p>'}catch(e){$('salesBox').textContent=e.message}}
+async function addProduct(){const f=new FormData();f.append('name',$('pName').value);f.append('description',$('pDesc').value);f.append('price',$('pPrice').value);f.append('category',$('pCat').value);if($('p1').files[0])f.append('photo1',$('p1').files[0]);if($('p2').files[0])f.append('photo2',$('p2').files[0]);if($('p3').files[0])f.append('photo3',$('p3').files[0]);try{await api('/commerce/products',{method:'POST',body:f});alert('Produto cadastrado.');['pName','pDesc','pPrice','pCat','p1','p2','p3'].forEach(x=>$(x).value='');loadProducts()}catch(e){alert(e.message)}}async function loadProducts(){if(currentUser?.role!=='commerce')return;try{const d=await api('/commerce/products');$('productList').innerHTML=d.products.map(p=>'<div class="card product"><b>'+esc(p.name)+'</b><p>'+esc(p.description||'')+'</p><p class="price">R$ '+Number(p.price).toFixed(2).replace('.',',')+'</p><div class="small">Entrega é calculada separadamente para o cliente.</div></div>').join('')||'<p class="muted">Nenhum produto cadastrado.</p>'}catch(e){}}
+async function loadCommerceOrders(){if(currentUser?.role!=='commerce')return;try{const d=await api('/commerce/orders');$('commerceOrders').innerHTML=d.orders.map(o=>`<div class="card"><b>Pedido #${o.id}</b><p>Status: <b>${esc(o.status)}</b></p><p>Subtotal: R$ ${Number(o.subtotal).toFixed(2).replace('.',',')}</p><p>Entrega: R$ ${Number(o.delivery_fee).toFixed(2).replace('.',',')}</p><p>Taxa DYABY: R$ ${Number(o.platform_fee).toFixed(2).replace('.',',')}</p><p>Total: R$ ${Number(o.total).toFixed(2).replace('.',',')}</p><p>Entregador: R$ ${Number(o.driver_payout).toFixed(2).replace('.',',')}</p>${o.status==='pending'?`<div class="grid2"><button class="btn primary" onclick="commerceOrderAction('accept',${o.id})">Aceitar</button><button class="btn outline" onclick="commerceOrderAction('reject',${o.id})">Rejeitar</button></div>`:''}</div>`).join('')||'<p class="muted">Nenhum pedido.</p>'}catch(e){$('commerceOrders').textContent=e.message}}
+async function commerceOrderAction(a,id){try{await api('/commerce/orders/'+id+'/'+a,{method:'POST',body:'{}'});loadCommerceOrders()}catch(e){alert(e.message)}}
+async function loadCatalog(){show('catalog');try{const d=await api('/catalog');window._catalogProducts=d.products;$('catalogList').innerHTML=d.products.map(p=>'<div class="card product"><b>'+esc(p.trade_name)+'</b><h2>'+esc(p.name)+'</h2><p>'+esc(p.description||'')+'</p><p class="price">R$ '+Number(p.price).toFixed(2).replace('.',',')+'</p><input class="input" type="number" id="km-'+p.id+'" placeholder="Km calculados automaticamente" step="0.1" readonly><button class="btn primary" onclick="buyProduct('+p.id+','+p.commerce_id+')">Comprar</button></div>').join('')||'<p class="muted">Nenhum produto disponível.</p>'}catch(e){$('catalogList').textContent=e.message}}
+async function buyProduct(pid,cid){try{const kmInput=document.getElementById('km-'+pid);let km=Number(kmInput?.value||0);const product=window._catalogProducts?.find(x=>Number(x.id)===Number(pid));if(!km&&product?.commerce_address&&navigator.geolocation){const pos=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,timeout:8000,maximumAge:60000}));const q=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q='+encodeURIComponent(product.commerce_address));const geo=await q.json();if(geo[0]){const lat=Number(geo[0].lat),lng=Number(geo[0].lon);const R=6371,toRad=x=>x*Math.PI/180;const a=toRad(lat-pos.coords.latitude),b=toRad(lng-pos.coords.longitude);const h=Math.sin(a/2)**2+Math.cos(toRad(pos.coords.latitude))*Math.cos(toRad(lat))*Math.sin(b/2)**2;km=2*R*Math.asin(Math.min(1,Math.sqrt(h)));}}if(!km){km=Number(prompt('Distância da entrega em km:','3')||0)}const q=await api('/delivery/quote?km='+km);if(!confirm('Distância: '+km.toFixed(1)+' km\nTaxa de entrega: R$ '+q.deliveryFee.toFixed(2)+'\nContinuar?'))return;const o=await api('/orders',{method:'POST',body:JSON.stringify({commerceId:cid,items:[{productId:pid,quantity:1}],deliveryKm:km,address:$('profileAddress').value})});alert('Pedido #'+o.order.id+' criado. Total R$ '+Number(o.order.total).toFixed(2).replace('.',','))}catch(e){alert(e.message)}}
+async function locateDelivery(){if(!navigator.geolocation){$('deliveryQuote').textContent='Localização não disponível.';return}const address=$('deliveryAddress').value.trim();if(!address){$('deliveryQuote').textContent='Informe o endereço de entrega.';return}try{const pos=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,timeout:10000,maximumAge:60000}));const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q='+encodeURIComponent(address));const geo=await r.json();if(!geo[0])throw new Error('Endereço não encontrado.');const route=await fetch('https://router.project-osrm.org/route/v1/driving/'+pos.coords.longitude+','+pos.coords.latitude+';'+Number(geo[0].lon)+','+Number(geo[0].lat)+'?overview=false').then(x=>x.json());if(!route.routes?.[0])throw new Error('Não foi possível calcular a distância.');const km=route.routes[0].distance/1000;$('deliveryKm').value=km.toFixed(1);await quoteDelivery()}catch(e){$('deliveryQuote').textContent=e.message||'Não foi possível calcular a entrega.'}}
+async function quoteDelivery(){const km=Number($('deliveryKm').value||0);try{const d=await api('/delivery/quote?km='+km);$('deliveryQuote').innerHTML='🚚 Taxa estimada: <span class="price">R$ '+d.deliveryFee.toFixed(2).replace('.',',')+'</span>'}catch(e){$('deliveryQuote').textContent=e.message}}
+async function saveProfile(){try{await api('/me',{method:'PUT',body:JSON.stringify({address:$('profileAddress').value})});$('profileMsg').textContent='Dados salvos.'}catch(e){$('profileMsg').textContent=e.message}}async function requestPhotoChange(){if(!$('profilePhoto').files[0]){$('profileMsg').textContent='Escolha uma foto primeiro.';return}const f=new FormData();f.append('photo',$('profilePhoto').files[0]);try{const d=await api('/profile/photo-request',{method:'POST',body:f});$('profileMsg').textContent=d.message}catch(e){$('profileMsg').textContent=e.message}}
+async function sendHelp(){try{const d=await api('/help',{method:'POST',body:JSON.stringify({subject:$('helpSubject').value||'Ajuda',message:$('helpMessage').value})});$('helpMsg').textContent='Solicitação enviada #'+d.ticket.id}catch(e){$('helpMsg').textContent=e.message}}
+async function logout(){if(currentUser?.role==='driver')fetch(API+'/driver/offline',{method:'POST',headers:{Authorization:'Bearer '+token}}).catch(()=>{});localStorage.removeItem('dyaby_token');token=null;currentUser=null;show('welcome')}
+async function adminLogin(){try{const d=await fetch(API+'/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:$('adminEmail').value,password:$('adminPassword').value})}).then(async r=>{const x=await r.json();if(!r.ok)throw new Error(x.error);return x});adminToken=d.token;localStorage.setItem('dyaby_admin_token',adminToken);show('admin');loadAdminDashboard();adminTab('drivers')}catch(e){$('adminLoginMsg').textContent=e.message}}
+async function adminApi(p,o={}){o.headers=o.headers||{};o.headers.Authorization='Bearer '+adminToken;o.headers['Content-Type']='application/json';const r=await fetch(API+p,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Erro admin');return d}
+async function loadAdminDashboard(){try{const d=await adminApi('/admin/dashboard');$('adminStats').innerHTML='<div class="stat">👤 Clientes<br><b>'+d.passengers.total+'</b><div class="admin-side">online '+d.passengers.online+'</div></div><div class="stat">🏍️ Motoristas<br><b>'+d.drivers.approved+'</b><div class="admin-side">pendentes '+d.drivers.pending+' · online '+d.drivers.online+'</div></div><div class="stat">🏪 Comercios<br><b>'+d.commerce.approved+'</b><div class="admin-side">pendentes '+d.commerce.pending+'</div></div><div class="stat">🆘 Ajuda aberta<br><b>'+d.help+'</b></div>'}catch(e){$('adminStats').textContent=e.message}}
+function adminTab(t){if(t==='drivers')adminDrivers();if(t==='commerce')adminCommerce();if(t==='help')adminHelp();if(t==='photos')adminPhotos();if(t==='settings')adminSettings()}
+async function adminDrivers(){try{const d=await adminApi('/admin/drivers');$('adminPanel').innerHTML=d.drivers.map(x=>'<div class="card"><b>'+esc(x.name)+'</b><div class="small">CPF '+esc(x.cpf)+' · '+esc(x.phone||'')+'</div><p>🏍️ '+esc(x.vehicle_model||'')+' · '+esc(x.plate||'')+'</p><p>'+esc(x.status)+'</p>'+(x.status==='pending'?'<div class="grid2"><button class="btn primary" onclick="approveDriverAdmin('+x.id+')">Aprovar</button><button class="btn outline" onclick="rejectDriverAdmin('+x.id+')">Rejeitar</button></div>':'')+'</div>').join('')||'<p class="muted">Nenhum motorista.</p>'}catch(e){$('adminPanel').textContent=e.message}}
+async function approveDriverAdmin(id){await adminApi('/admin/drivers/'+id+'/approve',{method:'POST'});adminDrivers();loadAdminDashboard()}async function rejectDriverAdmin(id){await adminApi('/admin/drivers/'+id+'/reject',{method:'POST'});adminDrivers();loadAdminDashboard()}
+async function adminCommerce(){try{const d=await adminApi('/admin/commerce');$('adminPanel').innerHTML=d.commerce.map(x=>'<div class="card"><b>🏪 '+esc(x.trade_name||x.name)+'</b><p>'+esc(x.category||'')+' · CNPJ '+esc(x.cnpj||'')+'</p><p>'+esc(x.status)+'</p>'+(x.status==='pending'?'<div class="grid2"><button class="btn primary" onclick="approveCommerce('+x.id+')">Aprovar</button><button class="btn outline" onclick="rejectCommerce('+x.id+')">Rejeitar</button></div>':'')+'</div>').join('')||'<p class="muted">Nenhum comércio.</p>'}catch(e){$('adminPanel').textContent=e.message}}
+async function approveCommerce(id){await adminApi('/admin/commerce/'+id+'/approve',{method:'POST'});adminCommerce();loadAdminDashboard()}async function rejectCommerce(id){await adminApi('/admin/commerce/'+id+'/reject',{method:'POST'});adminCommerce();loadAdminDashboard()}
+async function adminHelp(){try{const d=await adminApi('/admin/help');$('adminPanel').innerHTML=d.tickets.map(x=>'<div class="card"><b>#'+x.id+' · '+esc(x.subject)+'</b><p>'+esc(x.name)+' — '+esc(x.message)+'</p><textarea class="input" id="reply-'+x.id+'" placeholder="Resposta"></textarea><button class="btn primary" onclick="replyHelp('+x.id+')">Responder e encerrar</button></div>').join('')||'<p class="muted">Nenhuma solicitação.</p>'}catch(e){$('adminPanel').textContent=e.message}}
+async function replyHelp(id){await adminApi('/admin/help/'+id+'/reply',{method:'POST',body:JSON.stringify({reply:$('reply-'+id).value})});adminHelp();loadAdminDashboard()}
+async function adminPhotos(){try{const d=await adminApi('/admin/photo-requests');$('adminPanel').innerHTML=d.requests.map(x=>'<div class="card"><b>'+esc(x.name)+'</b><p>Solicitação de troca de foto</p><div class="grid2"><button class="btn primary" onclick="approvePhoto('+x.id+')">Aprovar</button><button class="btn outline" onclick="rejectPhoto('+x.id+')">Rejeitar</button></div></div>').join('')||'<p class="muted">Nenhuma troca pendente.</p>'}catch(e){$('adminPanel').textContent=e.message}}
+async function approvePhoto(id){await adminApi('/admin/photo-requests/'+id+'/approve',{method:'POST'});adminPhotos()}async function rejectPhoto(id){await adminApi('/admin/photo-requests/'+id+'/reject',{method:'POST'});adminPhotos()}
+async function adminSettings(){try{const d=await adminApi('/admin/settings');const m=Object.fromEntries(d.settings.map(x=>[x.key,x.value]));$('adminPanel').innerHTML='<div class="card"><h2>💰 Taxas configuráveis</h2><label class="small">Comissão corrida (%)</label><input id="setRide" class="input" value="'+esc(m.ride_commission_percent||5)+'"><label class="small">Tarifa base corrida (R$)</label><input id="setRideBase" class="input" value="'+esc(m.ride_base_fee||0)+'"><label class="small">Valor por km corrida (R$)</label><input id="setRideKm" class="input" value="'+esc(m.ride_per_km||1)+'"><label class="small">Comissão delivery (%)</label><input id="setDel" class="input" value="'+esc(m.delivery_commission_percent||5)+'"><label class="small">Taxa base entrega (R$)</label><input id="setBase" class="input" value="'+esc(m.delivery_base_fee||5)+'"><label class="small">Valor por km entrega (R$)</label><input id="setKm" class="input" value="'+esc(m.delivery_per_km||1.5)+'"><button class="btn primary" onclick="saveAdminSettings()">Salvar taxas</button></div>'}catch(e){$('adminPanel').textContent=e.message}}
+async function saveAdminSettings(){await adminApi('/admin/settings',{method:'PUT',body:JSON.stringify({ride_commission_percent:$('setRide').value,ride_base_fee:$('setRideBase').value,ride_per_km:$('setRideKm').value,delivery_commission_percent:$('setDel').value,delivery_base_fee:$('setBase').value,delivery_per_km:$('setKm').value})});alert('Taxas salvas.');}
+window.addEventListener('load',()=>{if(location.pathname==='/admin'){show('adminLogin')}else if(token)loadMe();});
+</script></body></html>

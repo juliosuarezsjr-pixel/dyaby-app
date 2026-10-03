@@ -1,41 +1,32 @@
-DYABY — ARQUIVOS COMPLETOS PARA INSTALAÇÃO
+DYABY V2.1 — versão mestre
 
-Conteúdo:
-- server.js
+Substitua estes 4 arquivos no GitHub:
 - index.html
+- server.js
 - package.json
-- .env.example
+- INSTRUCOES.txt
 
-ATENÇÃO:
-1. Estes arquivos são uma base funcional do backend/frontend e não significam que o aplicativo já está pronto para produção.
-2. O backend usa PostgreSQL. No Render, configure DATABASE_URL apontando para o PostgreSQL.
-3. Configure JWT_SECRET, ADMIN_EMAIL e ADMIN_PASSWORD como Environment Variables no Render.
-4. Nunca coloque senhas ou tokens reais dentro do código.
-5. O login de passageiro não usa WhatsApp OTP.
-6. A verificação por WhatsApp do motorista/entregador ainda precisa ser conectada a um provedor como Twilio Verify.
-7. O sistema de mulheres já possui regra no backend:
-   - corrida normal: pode aparecer para motoristas ativos;
-   - corrida somente para mulheres: só aparece/é aceita por motorista com gender=female;
-   - motorista mulher pode escolher "todas" ou "somente mulheres";
-   - motorista homem não pode selecionar "somente mulheres".
-8. A compensação de R$5 por cancelamento do passageiro após 3 minutos de corrida iniciada está no backend.
-9. Mapas, Pix, pagamentos, chat em tempo real, entregas e aprovação documental precisam de integrações adicionais antes de uso comercial.
-10. Depois de substituir os arquivos no GitHub, faça novo deploy no Render.
+Depois faça Commit changes e aguarde o deploy do Render.
 
-COMO INSTALAR NO GITHUB:
-- Abra o repositório dyaby-app.
-- Substitua server.js, index.html e package.json pelos arquivos deste pacote.
-- Adicione .env.example apenas como referência; não coloque valores reais nele.
-- Faça commit.
+Confirmação do deploy:
+Abra https://dyaby-app.onrender.com/api/version
+Deve aparecer version: 2.1.0-master.
 
-COMO CONFIGURAR NO RENDER:
-- Build Command: npm install
-- Start Command: npm start
-- Root Directory: deixe vazio se estes arquivos estiverem na raiz.
-- Environment:
-  DATABASE_URL = URL do PostgreSQL
-  JWT_SECRET = segredo longo
-  ADMIN_EMAIL = e-mail do administrador
-  ADMIN_PASSWORD = senha do administrador
+Variáveis obrigatórias no Render:
+DATABASE_URL
+JWT_SECRET
+ADMIN_EMAIL
+ADMIN_PASSWORD
 
-Antes de publicar para clientes, faça testes de cadastro, login, corrida normal, corrida para mulheres, aprovação de motorista e cancelamento.
+Para WhatsApp real, configure também:
+TWILIO_ACCOUNT_SID
+TWILIO_AUTH_TOKEN
+TWILIO_VERIFY_SERVICE_SID
+
+Nunca coloque senhas ou chaves privadas no GitHub.
+
+Estrutura:
+Cliente = corridas, encomendas, comida, bolos/doces, corrida para mulheres e radar.
+Motorista/Entregador = corridas, entregas, ganhos e perfil.
+Comércio = somente produtos, pedidos, vendas e perfil do negócio.
+Admin = acesso separado em /admin.
