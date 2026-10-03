@@ -1,0 +1,15 @@
+DYABY V8 — VISUAL CATEGORIAS REAL
+
+Esta versão embute a imagem do mascote diretamente no index.html.
+Assim as imagens das categorias não dependem de arquivo externo e não ficam pretas/quebradas no Render.
+
+Categorias com mascote visível:
+🏍️ Moto
+📦 Entrega
+🍔 Comida
+🍰 Bolos e doces
+♀ Só mulheres
+
+IMPORTANTE: envie index.html, server.js, package.json e este mascote.jpg se estiver fazendo upload manual. O index.html já contém o mascote embutido, então a tela principal funciona mesmo sem o JPG.
+
+Esta versão é visual; preserve o backend atual ao publicar.
