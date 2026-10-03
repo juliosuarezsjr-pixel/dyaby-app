@@ -1,20 +1,17 @@
-DYABY V3.1 — SINCRONIZAÇÃO DE ENCOMENDAS
+DYABY V3.2 — ENCOMENDAS E CORRIDAS: EXPIRAÇÃO + INÍCIO + MAPA
 
-1. Suba estes 4 arquivos para a branch main:
-   - index.html
-   - server.js
-   - package.json
-   - INSTRUCOES.txt
+Subir para main: index.html, server.js, package.json e INSTRUCOES.txt.
 
-2. O Render fará o deploy automaticamente.
+- Novas corridas e encomendas ficam disponíveis por no máximo 20 minutos.
+- Itens antigos deixam de aparecer para novos motoristas/entregadores.
+- Um motorista não pode aceitar uma nova corrida/encomenda enquanto já tiver uma ativa.
+- Ao aceitar corrida: mapa + Cheguei + Iniciar corrida.
+- Ao iniciar corrida: mapa passa a rota até o destino.
+- Ao aceitar encomenda: mapa + Iniciar entrega.
+- Iniciar entrega: status Indo para coleta + rota até a coleta.
+- Validar coleta: rota muda para o destino.
+- Validar entrega: encerra a entrega.
+- GPS do motorista continua sendo enviado periodicamente.
+- Cliente e motorista continuam sincronizados pelo banco.
 
-CORREÇÃO DESTA VERSÃO:
-- O cliente recupera automaticamente uma encomenda ativa mesmo após recarregar a página.
-- O cliente vê BUSCANDO ENTREGADOR e, quando aceitar, mostra ENTREGADOR ACEITOU + nome do entregador.
-- O motorista atualiza a lista de encomendas automaticamente a cada 2 segundos.
-- O motorista recupera automaticamente sua encomenda ativa.
-- Cliente e motorista usam o mesmo status salvo no PostgreSQL.
-- Cancelamento da encomenda é sincronizado entre cliente e motorista.
-- A encomenda continua usando as etapas de coleta e entrega existentes.
-
-NÃO remova as telas de validação já existentes.
+Não remover as telas existentes de validação de coleta/entrega.
