@@ -229,7 +229,12 @@
 </nav>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+const API = "/api";
+let token = localStorage.getItem("dyaby_token");
+let currentUser = null;
+let currentRide = null;
 let adminToken = localStorage.getItem("dyaby_admin_token") || null;
 
 async function adminLogin(){
@@ -298,11 +303,8 @@ function adminLogout(goWelcome=true){
 }
 
 </script>
-<script>
-const API = "/api";
-let token = localStorage.getItem("dyaby_token");
-let currentUser = null;
-let currentRide = null;
+
+
 let womenRide = false;
 let map = null, originMarker = null, destinationMarker = null, routeLayer = null;
 let originCoords = null, destinationCoords = null;
