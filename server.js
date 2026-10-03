@@ -1,148 +1,93 @@
-import express from "express";
-import cors from "cors";
-import helmet from "helmet";
-import rateLimit from "express-rate-limit";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import pg from "pg";
-import Database from "better-sqlite3";
-import multer from "multer";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
+require("dotenv").config();
 
-const { Pool } = pg;
+const express = require("express");
+const path = require("path");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const helmet = require("helmet");
+const cors = require("cors");
+const rateLimit = require("express-rate-limit");
+const multer = require("multer");
+const { Pool } = require("pg");
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.PORT || 3000);
-const JWT_SECRET = process.env.JWT_SECRET || "DEV_ONLY_CHANGE_ME";
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@dyaby.com.br";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "CHANGE_ME";
-const DATABASE_URL = process.env.DATABASE_URL;
+const app = express();
+const PORT = process.env.PORT || 10000;
+const JWT_SECRET = process.env.JWT_SECRET;
 
-if (!DATABASE_URL) {
+if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL não configurada.");
+  process.exit(1);
+}
+if (!JWT_SECRET) {
+  console.error("JWT_SECRET não configurado.");
   process.exit(1);
 }
 
 const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: DATABASE_URL.includes("render.com") ? { rejectUnauthorized: false } : undefined,
-  max: 5,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL.includes("localhost")
+    ? false
+    : { rejectUnauthorized: false }
 });
 
-const app = express();
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({ origin: process.env.CORS_ORIGIN || true }));
-app.use(express.json({ limit: "1mb" }));
+app.use(cors());
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 300 }));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 100,
-  standardHeaders: true
+const upload = multer({
+  dest: path.join(__dirname, "uploads"),
+  limits: { fileSize: 8 * 1024 * 1024 }
 });
-app.use("/api/", limiter);
 
-const uploadDir = path.join(__dirname, "uploads");
-fs.mkdirSync(uploadDir, { recursive: true });
-
-function clean(v) {
-  return String(v ?? "").trim();
-}
-
-function onlyDigits(v) {
-  return clean(v).replace(/\D/g, "");
-}
-
-function validCPF(input) {
-  const cpf = onlyDigits(input);
-  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
-  let sum = 0;
-  for (let i = 0; i < 9; i++) sum += Number(cpf[i]) * (10 - i);
-  let d1 = (sum * 10) % 11;
-  if (d1 === 10) d1 = 0;
-  if (d1 !== Number(cpf[9])) return false;
-  sum = 0;
-  for (let i = 0; i < 10; i++) sum += Number(cpf[i]) * (11 - i);
-  let d2 = (sum * 10) % 11;
-  if (d2 === 10) d2 = 0;
-  return d2 === Number(cpf[10]);
-}
-
-function validPhone(input) {
-  const p = onlyDigits(input);
-  return p.length >= 10 && p.length <= 13;
-}
-
-function validEmail(input) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean(input));
-}
-
-function tokenFor(user) {
-  return jwt.sign(
-    { sub: user.id, role: user.role },
-    JWT_SECRET,
-    { expiresIn: "7d" }
-  );
-}
-
-function auth(req, res, next) {
-  const h = req.headers.authorization || "";
-  if (!h.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Não autenticado." });
-  }
-  try {
-    req.auth = jwt.verify(h.slice(7), JWT_SECRET);
-    next();
-  } catch {
-    return res.status(401).json({ error: "Token inválido ou expirado." });
-  }
-}
-
-function admin(req, res, next) {
-  if (req.auth?.role !== "admin") {
-    return res.status(403).json({ error: "Acesso administrativo negado." });
-  }
-  next();
+async function q(sql, params = []) {
+  return pool.query(sql, params);
 }
 
 async function initDatabase() {
-  await pool.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
       role TEXT NOT NULL CHECK(role IN ('passenger','driver')),
       name TEXT NOT NULL,
-      cpf TEXT NOT NULL UNIQUE,
-      phone TEXT NOT NULL UNIQUE,
-      email TEXT NOT NULL UNIQUE,
+      cpf TEXT UNIQUE NOT NULL,
+      phone TEXT,
+      email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       pix_key TEXT,
-      status TEXT NOT NULL DEFAULT 'pending',
-      phone_verified INTEGER NOT NULL DEFAULT 0,
-      email_verified INTEGER NOT NULL DEFAULT 0,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
+      gender TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      phone_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
 
+  await q(`
     CREATE TABLE IF NOT EXISTS driver_profiles (
       user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       cnh TEXT,
       plate TEXT,
       vehicle_model TEXT,
       document_path TEXT,
+      service_mode TEXT NOT NULL DEFAULT 'all'
+        CHECK(service_mode IN ('all','women_only')),
       approved_at TIMESTAMPTZ
-    );
+    )
+  `);
 
+  await q(`
     CREATE TABLE IF NOT EXISTS rides (
       id SERIAL PRIMARY KEY,
       passenger_id INTEGER NOT NULL REFERENCES users(id),
       driver_id INTEGER REFERENCES users(id),
       destination TEXT NOT NULL,
-      price NUMERIC(10,2) NOT NULL,
+      price NUMERIC(10,2) NOT NULL DEFAULT 10,
       women_only BOOLEAN NOT NULL DEFAULT FALSE,
       status TEXT NOT NULL DEFAULT 'searching',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       accepted_at TIMESTAMPTZ,
       arrived_at TIMESTAMPTZ,
       started_at TIMESTAMPTZ,
@@ -150,541 +95,554 @@ async function initDatabase() {
       cancelled_at TIMESTAMPTZ,
       cancelled_by TEXT,
       driver_compensation NUMERIC(10,2) NOT NULL DEFAULT 0
-    );
+    )
   `);
 
-  // Se o antigo SQLite ainda existir no ambiente, tenta preservar
-  // os usuários existentes. Se não existir, simplesmente continua.
-  const oldDbPath = path.join(__dirname, "data", "dyaby.db");
-  if (!fs.existsSync(oldDbPath)) return;
+  // Migrações para bancos já existentes.
+  await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gender TEXT`);
+  await q(`ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS service_mode TEXT NOT NULL DEFAULT 'all'`);
+  await q(`ALTER TABLE rides ADD COLUMN IF NOT EXISTS women_only BOOLEAN NOT NULL DEFAULT FALSE`);
+  await q(`ALTER TABLE rides ADD COLUMN IF NOT EXISTS driver_compensation NUMERIC(10,2) NOT NULL DEFAULT 0`);
+
+  console.log("Banco DYABY pronto.");
+}
+
+function auth(req, res, next) {
+  const h = req.headers.authorization || "";
+  const token = h.startsWith("Bearer ") ? h.slice(7) : null;
+  if (!token) return res.status(401).json({ error: "Não autenticado." });
 
   try {
-    const oldDb = new Database(oldDbPath, { readonly: true });
-    const oldUsers = oldDb.prepare(`
-      SELECT id,role,name,cpf,phone,email,password_hash,pix_key,status,
-             phone_verified,email_verified,created_at
-      FROM users
-      ORDER BY id
-    `).all();
-
-    for (const u of oldUsers) {
-      await pool.query(`
-        INSERT INTO users
-          (id,role,name,cpf,phone,email,password_hash,pix_key,status,
-           phone_verified,email_verified,created_at)
-        VALUES
-          ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-        ON CONFLICT DO NOTHING
-      `, [
-        u.id, u.role, u.name, u.cpf, u.phone, u.email, u.password_hash,
-        u.pix_key, u.status, u.phone_verified, u.email_verified, u.created_at
-      ]);
-    }
-
-    const oldDrivers = oldDb.prepare(`
-      SELECT user_id,cnh,plate,vehicle_model,document_path,approved_at
-      FROM driver_profiles
-    `).all();
-
-    for (const d of oldDrivers) {
-      await pool.query(`
-        INSERT INTO driver_profiles
-          (user_id,cnh,plate,vehicle_model,document_path,approved_at)
-        VALUES ($1,$2,$3,$4,$5,$6)
-        ON CONFLICT (user_id) DO NOTHING
-      `, [
-        d.user_id, d.cnh, d.plate, d.vehicle_model,
-        d.document_path, d.approved_at
-      ]);
-    }
-
-    await pool.query(`
-      SELECT setval(
-        pg_get_serial_sequence('users','id'),
-        COALESCE((SELECT MAX(id) FROM users), 1),
-        true
-      )
-    `);
-
-    oldDb.close();
-    console.log(`Migração SQLite → PostgreSQL concluída: ${oldUsers.length} usuário(s).`);
-  } catch (err) {
-    console.error("Aviso: não foi possível migrar o SQLite:", err.message);
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: "Sessão inválida ou expirada." });
   }
+}
+
+function safeUser(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    role: row.role,
+    name: row.name,
+    cpf: row.cpf,
+    phone: row.phone,
+    email: row.email,
+    pix_key: row.pix_key,
+    gender: row.gender,
+    status: row.status,
+    phone_verified: row.phone_verified,
+    email_verified: row.email_verified,
+    service_mode: row.service_mode || "all"
+  };
 }
 
 app.get("/api/health", async (req, res) => {
   try {
-    await pool.query("SELECT 1");
-    res.json({
-      ok: true,
-      service: "DYABY cadastro",
-      database: "postgresql",
-      time: new Date().toISOString()
-    });
-  } catch {
-    res.status(503).json({ ok: false, error: "Banco de dados indisponível." });
+    await q("SELECT 1");
+    res.json({ ok: true, service: "DYABY", database: "postgres" });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: "Banco indisponível." });
   }
 });
 
 app.post("/api/auth/register", async (req, res) => {
   try {
-    const role = req.body.role === "driver" ? "driver" : "passenger";
-    const name = clean(req.body.name);
-    const cpf = onlyDigits(req.body.cpf);
-    const phone = onlyDigits(req.body.phone);
-    const email = clean(req.body.email).toLowerCase();
-    const password = String(req.body.password || "");
+    const {
+      role = "passenger",
+      name,
+      cpf,
+      phone,
+      email,
+      password,
+      gender,
+      serviceMode = "all",
+      cnh,
+      plate,
+      vehicleModel
+    } = req.body;
 
-    if (name.length < 3) return res.status(400).json({ error: "Informe o nome completo." });
-    if (!validCPF(cpf)) return res.status(400).json({ error: "CPF inválido." });
-    if (!validPhone(phone)) return res.status(400).json({ error: "Telefone inválido." });
-    if (!validEmail(email)) return res.status(400).json({ error: "E-mail inválido." });
-    if (password.length < 8) {
-      return res.status(400).json({ error: "A senha precisa ter pelo menos 8 caracteres." });
+    if (!["passenger", "driver"].includes(role))
+      return res.status(400).json({ error: "Tipo de conta inválido." });
+
+    if (!name || !cpf || !email || !password)
+      return res.status(400).json({ error: "Preencha nome, CPF, e-mail e senha." });
+
+    if (password.length < 6)
+      return res.status(400).json({ error: "A senha precisa ter pelo menos 6 caracteres." });
+
+    const cleanGender = ["female", "male", "other"].includes(gender) ? gender : null;
+    const cleanMode = serviceMode === "women_only" ? "women_only" : "all";
+
+    if (role === "driver" && cleanMode === "women_only" && cleanGender !== "female") {
+      return res.status(400).json({
+        error: "Para trabalhar somente com mulheres, o cadastro do motorista deve indicar sexo feminino."
+      });
     }
 
-    const exists = await pool.query(
-      "SELECT id FROM users WHERE cpf=$1 OR phone=$2 OR email=$3 LIMIT 1",
-      [cpf, phone, email]
+    const exists = await q(
+      "SELECT id FROM users WHERE cpf=$1 OR LOWER(email)=LOWER($2)",
+      [cpf, email]
     );
-    if (exists.rowCount) {
-      return res.status(409).json({ error: "CPF, telefone ou e-mail já cadastrado." });
-    }
+    if (exists.rowCount)
+      return res.status(409).json({ error: "CPF ou e-mail já cadastrado." });
 
     const hash = await bcrypt.hash(password, 12);
     const status = role === "driver" ? "pending" : "active";
 
-    const result = await pool.query(`
-      INSERT INTO users(role,name,cpf,phone,email,password_hash,status)
-      VALUES($1,$2,$3,$4,$5,$6,$7)
-      RETURNING id,role,name,cpf,phone,email,status,phone_verified,
-                email_verified,created_at
-    `, [role, name, cpf, phone, email, hash, status]);
+    const inserted = await q(
+      `INSERT INTO users
+       (role,name,cpf,phone,email,password_hash,gender,status)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+       RETURNING *`,
+      [role, name.trim(), cpf.trim(), phone || null, email.trim().toLowerCase(), hash, cleanGender, status]
+    );
 
-    const user = result.rows[0];
+    const user = inserted.rows[0];
 
     if (role === "driver") {
-      await pool.query(`
-        INSERT INTO driver_profiles(user_id,cnh,plate,vehicle_model)
-        VALUES($1,$2,$3,$4)
-        ON CONFLICT (user_id) DO NOTHING
-      `, [
-        user.id,
-        clean(req.body.cnh),
-        clean(req.body.plate),
-        clean(req.body.vehicleModel)
-      ]);
+      await q(
+        `INSERT INTO driver_profiles
+         (user_id,cnh,plate,vehicle_model,service_mode)
+         VALUES($1,$2,$3,$4,$5)
+         ON CONFLICT (user_id) DO UPDATE SET
+           cnh=EXCLUDED.cnh,
+           plate=EXCLUDED.plate,
+           vehicle_model=EXCLUDED.vehicle_model,
+           service_mode=EXCLUDED.service_mode`,
+        [user.id, cnh || null, plate || null, vehicleModel || null, cleanMode]
+      );
     }
 
+    const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
+
     res.status(201).json({
+      token,
+      user: safeUser({ ...user, service_mode: cleanMode }),
       message: role === "driver"
-        ? "Cadastro recebido. Aguarde aprovação."
-        : "Cadastro criado.",
-      user,
-      token: tokenFor(user)
+        ? "Cadastro recebido. O motorista fica pendente até a aprovação do administrador."
+        : "Conta criada com sucesso."
     });
-  } catch (err) {
-    console.error("REGISTER:", err);
-    if (err.code === "23505") {
-      return res.status(409).json({ error: "CPF, telefone ou e-mail já cadastrado." });
-    }
+  } catch (e) {
+    console.error(e);
     res.status(500).json({ error: "Erro ao criar cadastro." });
   }
 });
 
 app.post("/api/auth/login", async (req, res) => {
   try {
-    const login = clean(req.body.login).toLowerCase();
-    const password = String(req.body.password || "");
+    const { email, password } = req.body;
+    if (!email || !password)
+      return res.status(400).json({ error: "Informe e-mail e senha." });
 
-    const result = await pool.query(`
-      SELECT *
-      FROM users
-      WHERE lower(email)=$1 OR cpf=$2 OR phone=$3
-      LIMIT 1
-    `, [login, onlyDigits(login), onlyDigits(login)]);
+    const result = await q(
+      `SELECT u.*, dp.service_mode
+       FROM users u
+       LEFT JOIN driver_profiles dp ON dp.user_id=u.id
+       WHERE LOWER(u.email)=LOWER($1)`,
+      [email]
+    );
+
+    if (!result.rowCount)
+      return res.status(401).json({ error: "E-mail ou senha inválidos." });
 
     const user = result.rows[0];
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) return res.status(401).json({ error: "E-mail ou senha inválidos." });
 
-    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
-      return res.status(401).json({ error: "Login ou senha incorretos." });
-    }
+    if (user.role === "driver" && user.status === "rejected")
+      return res.status(403).json({ error: "Cadastro de motorista rejeitado. Procure o suporte." });
 
-    if (user.role === "driver" && user.status !== "approved") {
-      return res.status(403).json({
-        error: "Cadastro de motorista ainda não foi aprovado.",
-        status: user.status
-      });
-    }
-
-    const safe = {
-      id: user.id,
-      role: user.role,
-      name: user.name,
-      cpf: user.cpf,
-      phone: user.phone,
-      email: user.email,
-      status: user.status
-    };
-
-    res.json({ user: safe, token: tokenFor(safe) });
-  } catch (err) {
-    console.error("LOGIN:", err);
-    res.status(500).json({ error: "Erro interno ao entrar. Tente novamente." });
+    const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
+    res.json({ token, user: safeUser(user) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erro no login." });
   }
 });
 
 app.get("/api/me", auth, async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT id,role,name,cpf,phone,email,pix_key,status,
-             phone_verified,email_verified,created_at
-      FROM users
-      WHERE id=$1
-    `, [req.auth.sub]);
+  const result = await q(
+    `SELECT u.*, dp.service_mode, dp.cnh, dp.plate, dp.vehicle_model, dp.approved_at
+     FROM users u
+     LEFT JOIN driver_profiles dp ON dp.user_id=u.id
+     WHERE u.id=$1`,
+    [req.user.id]
+  );
+  if (!result.rowCount) return res.status(404).json({ error: "Usuário não encontrado." });
 
-    const user = result.rows[0];
-    if (!user) return res.status(404).json({ error: "Usuário não encontrado." });
-
-    let driver = null;
-    if (user.role === "driver") {
-      const d = await pool.query(`
-        SELECT cnh,plate,vehicle_model,document_path,approved_at
-        FROM driver_profiles WHERE user_id=$1
-      `, [user.id]);
-      driver = d.rows[0] || null;
-    }
-
-    res.json({ user, driver });
-  } catch (err) {
-    console.error("ME:", err);
-    res.status(500).json({ error: "Erro ao carregar usuário." });
-  }
+  const row = result.rows[0];
+  res.json({
+    user: safeUser(row),
+    driver: row.role === "driver" ? {
+      cnh: row.cnh,
+      plate: row.plate,
+      vehicle_model: row.vehicle_model,
+      service_mode: row.service_mode || "all",
+      approved_at: row.approved_at
+    } : null
+  });
 });
 
 app.put("/api/me", auth, async (req, res) => {
   try {
-    const phone = onlyDigits(req.body.phone);
-    const pix = clean(req.body.pixKey);
-
-    if (phone && !validPhone(phone)) {
-      return res.status(400).json({ error: "Telefone inválido." });
-    }
-
-    await pool.query(`
-      UPDATE users
-      SET phone=COALESCE(NULLIF($1,''),phone), pix_key=$2
-      WHERE id=$3
-    `, [phone, pix, req.auth.sub]);
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("UPDATE ME:", err);
-    res.status(500).json({ error: "Erro ao atualizar perfil." });
+    const { name, phone, pixKey } = req.body;
+    const result = await q(
+      `UPDATE users
+       SET name=COALESCE($1,name),
+           phone=COALESCE($2,phone),
+           pix_key=COALESCE($3,pix_key)
+       WHERE id=$4
+       RETURNING *`,
+      [name || null, phone || null, pixKey || null, req.user.id]
+    );
+    res.json({ user: safeUser(result.rows[0]) });
+  } catch {
+    res.status(500).json({ error: "Não foi possível atualizar o perfil." });
   }
 });
 
-const upload = multer({
-  dest: uploadDir,
-  limits: { fileSize: 8 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const ok = ["image/jpeg", "image/png", "application/pdf"].includes(file.mimetype);
-    cb(ok ? null : new Error("Somente JPG, PNG ou PDF."), ok);
-  }
-});
-
-app.post("/api/driver/documents", auth, upload.single("document"), async (req, res) => {
+app.put("/api/driver/preferences", auth, async (req, res) => {
   try {
-    if (req.auth.role !== "driver") {
-      return res.status(403).json({ error: "Somente motoristas." });
-    }
-    if (!req.file) return res.status(400).json({ error: "Envie um documento." });
+    if (req.user.role !== "driver")
+      return res.status(403).json({ error: "Somente motoristas/entregadores." });
 
-    await pool.query(
-      "UPDATE driver_profiles SET document_path=$1 WHERE user_id=$2",
-      [req.file.filename, req.auth.sub]
-    );
-    await pool.query(
-      "UPDATE users SET status='pending' WHERE id=$1",
-      [req.auth.sub]
+    const mode = req.body.serviceMode === "women_only" ? "women_only" : "all";
+
+    const u = await q("SELECT gender FROM users WHERE id=$1", [req.user.id]);
+    if (!u.rowCount) return res.status(404).json({ error: "Usuário não encontrado." });
+
+    if (mode === "women_only" && u.rows[0].gender !== "female")
+      return res.status(400).json({
+        error: "Somente motoristas do sexo feminino podem selecionar atendimento somente para mulheres."
+      });
+
+    await q(
+      `INSERT INTO driver_profiles(user_id,service_mode)
+       VALUES($1,$2)
+       ON CONFLICT(user_id) DO UPDATE SET service_mode=EXCLUDED.service_mode`,
+      [req.user.id, mode]
     );
 
-    res.json({ ok: true, message: "Documento recebido para análise." });
-  } catch (err) {
-    console.error("DOCUMENT:", err);
-    res.status(500).json({ error: "Erro ao salvar documento." });
+    res.json({ ok: true, serviceMode: mode });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Não foi possível salvar a preferência." });
   }
 });
 
+app.post("/api/driver/documents", auth, upload.fields([
+  { name: "selfie", maxCount: 1 },
+  { name: "cnh", maxCount: 1 },
+  { name: "vehicleDocument", maxCount: 1 }
+]), async (req, res) => {
+  try {
+    if (req.user.role !== "driver")
+      return res.status(403).json({ error: "Somente motoristas/entregadores." });
 
-function ridePayload(row) {
-  return {
-    id: row.id,
-    passenger_id: row.passenger_id,
-    driver_id: row.driver_id,
-    destination: row.destination,
-    price: Number(row.price),
-    women_only: row.women_only,
-    status: row.status,
-    created_at: row.created_at,
-    accepted_at: row.accepted_at,
-    arrived_at: row.arrived_at,
-    started_at: row.started_at,
-    finished_at: row.finished_at,
-    cancelled_at: row.cancelled_at,
-    cancelled_by: row.cancelled_by,
-    driver_compensation: Number(row.driver_compensation || 0),
-    driver_name: row.driver_name || null
-  };
-}
+    const { cnh, plate, vehicleModel } = req.body;
+    const doc = req.files?.vehicleDocument?.[0]?.path || null;
 
-async function getRide(id) {
-  const r = await pool.query(`
-    SELECT r.*, u.name AS driver_name
-    FROM rides r
-    LEFT JOIN users u ON u.id=r.driver_id
-    WHERE r.id=$1
-  `, [id]);
-  return r.rows[0] || null;
-}
+    await q(
+      `INSERT INTO driver_profiles(user_id,cnh,plate,vehicle_model,document_path)
+       VALUES($1,$2,$3,$4,$5)
+       ON CONFLICT(user_id) DO UPDATE SET
+         cnh=EXCLUDED.cnh,
+         plate=EXCLUDED.plate,
+         vehicle_model=EXCLUDED.vehicle_model,
+         document_path=COALESCE(EXCLUDED.document_path,driver_profiles.document_path)`,
+      [req.user.id, cnh || null, plate || null, vehicleModel || null, doc]
+    );
 
+    res.json({ ok: true, message: "Documentos recebidos para análise." });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erro ao enviar documentos." });
+  }
+});
+
+// Corridas
 app.post("/api/rides", auth, async (req, res) => {
   try {
-    if (req.auth.role !== "passenger") {
-      return res.status(403).json({ error: "Somente passageiros podem solicitar corrida." });
-    }
-    const destination = clean(req.body.destination);
-    const price = Number(req.body.price);
+    if (req.user.role !== "passenger")
+      return res.status(403).json({ error: "Somente passageiros podem pedir corrida." });
+
+    const destination = String(req.body.destination || "").trim();
+    const price = Number(req.body.price || 10);
     const womenOnly = Boolean(req.body.womenOnly);
+
     if (!destination) return res.status(400).json({ error: "Informe o destino." });
-    if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: "Valor da corrida inválido." });
+    if (!Number.isFinite(price) || price <= 0)
+      return res.status(400).json({ error: "Preço inválido." });
 
-    const active = await pool.query(`
-      SELECT id FROM rides
-      WHERE passenger_id=$1 AND status IN ('searching','accepted','arrived','started')
-      LIMIT 1
-    `, [req.auth.sub]);
-    if (active.rowCount) return res.status(409).json({ error: "Você já possui uma corrida em andamento." });
+    const result = await q(
+      `INSERT INTO rides(passenger_id,destination,price,women_only,status)
+       VALUES($1,$2,$3,$4,'searching')
+       RETURNING *`,
+      [req.user.id, destination, price, womenOnly]
+    );
 
-    const r = await pool.query(`
-      INSERT INTO rides(passenger_id,destination,price,women_only)
-      VALUES($1,$2,$3,$4)
-      RETURNING *
-    `, [req.auth.sub, destination, price, womenOnly]);
-    res.status(201).json({ ride: ridePayload(r.rows[0]) });
-  } catch (err) {
-    console.error("CREATE RIDE:", err);
-    res.status(500).json({ error: "Erro ao solicitar corrida." });
+    res.status(201).json({ ride: result.rows[0] });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Não foi possível pedir a corrida." });
   }
 });
 
 app.get("/api/rides/active", auth, async (req, res) => {
-  try {
-    const r = await pool.query(`
-      SELECT r.*, u.name AS driver_name
-      FROM rides r LEFT JOIN users u ON u.id=r.driver_id
-      WHERE (r.passenger_id=$1 OR r.driver_id=$1)
-        AND r.status IN ('searching','accepted','arrived','started')
-      ORDER BY r.id DESC LIMIT 1
-    `, [req.auth.sub]);
-    res.json({ ride: r.rows[0] ? ridePayload(r.rows[0]) : null });
-  } catch (err) {
-    console.error("ACTIVE RIDE:", err);
-    res.status(500).json({ error: "Erro ao carregar corrida." });
-  }
+  const result = await q(
+    `SELECT r.*, p.name AS passenger_name, d.name AS driver_name
+     FROM rides r
+     JOIN users p ON p.id=r.passenger_id
+     LEFT JOIN users d ON d.id=r.driver_id
+     WHERE (r.passenger_id=$1 OR r.driver_id=$1)
+       AND r.status IN ('searching','accepted','arrived','started')
+     ORDER BY r.created_at DESC`,
+    [req.user.id]
+  );
+  res.json({ rides: result.rows });
 });
 
 app.get("/api/rides/available", auth, async (req, res) => {
   try {
-    if (req.auth.role !== "driver") return res.status(403).json({ error: "Somente motoristas." });
-    const me = await pool.query("SELECT status FROM users WHERE id=$1", [req.auth.sub]);
-    if (!me.rows[0] || me.rows[0].status !== "approved") {
-      return res.status(403).json({ error: "Cadastro de motorista ainda não foi aprovado." });
-    }
-    const r = await pool.query(`
-      SELECT * FROM rides
-      WHERE status='searching'
-        AND driver_id IS NULL
-        AND passenger_id <> $1
-      ORDER BY created_at ASC
-      LIMIT 20
-    `, [req.auth.sub]);
-    res.json({ rides: r.rows.map(ridePayload) });
-  } catch (err) {
-    console.error("AVAILABLE RIDES:", err);
+    if (req.user.role !== "driver")
+      return res.status(403).json({ error: "Somente motoristas." });
+
+    const result = await q(
+      `SELECT r.*, p.name AS passenger_name
+       FROM rides r
+       JOIN users p ON p.id=r.passenger_id
+       JOIN users d ON d.id=$1
+       LEFT JOIN driver_profiles dp ON dp.user_id=d.id
+       WHERE r.status='searching'
+         AND r.driver_id IS NULL
+         AND d.status='active'
+         AND (
+           r.women_only = FALSE
+           OR (d.gender='female' AND COALESCE(dp.service_mode,'all') IN ('all','women_only'))
+         )
+         AND (
+           COALESCE(dp.service_mode,'all')='all'
+           OR (COALESCE(dp.service_mode,'all')='women_only' AND r.women_only=TRUE)
+         )
+       ORDER BY r.created_at DESC`,
+      [req.user.id]
+    );
+
+    res.json({ rides: result.rows });
+  } catch (e) {
+    console.error(e);
     res.status(500).json({ error: "Erro ao buscar corridas." });
   }
 });
 
 app.get("/api/rides/:id", auth, async (req, res) => {
-  try {
-    const ride = await getRide(req.params.id);
-    if (!ride) return res.status(404).json({ error: "Corrida não encontrada." });
-    if (Number(ride.passenger_id) !== Number(req.auth.sub) && Number(ride.driver_id) !== Number(req.auth.sub)) {
-      return res.status(403).json({ error: "Você não participa desta corrida." });
-    }
-    res.json({ ride: ridePayload(ride) });
-  } catch (err) {
-    console.error("GET RIDE:", err);
-    res.status(500).json({ error: "Erro ao carregar corrida." });
-  }
+  const result = await q(
+    `SELECT r.*, p.name AS passenger_name, d.name AS driver_name
+     FROM rides r
+     JOIN users p ON p.id=r.passenger_id
+     LEFT JOIN users d ON d.id=r.driver_id
+     WHERE r.id=$1`,
+    [req.params.id]
+  );
+  if (!result.rowCount) return res.status(404).json({ error: "Corrida não encontrada." });
+
+  const ride = result.rows[0];
+  if (ride.passenger_id !== req.user.id && ride.driver_id !== req.user.id)
+    return res.status(403).json({ error: "Acesso negado." });
+
+  res.json({ ride });
 });
 
 app.post("/api/rides/:id/accept", auth, async (req, res) => {
   try {
-    if (req.auth.role !== "driver") return res.status(403).json({ error: "Somente motoristas." });
-    const driver = await pool.query("SELECT status FROM users WHERE id=$1", [req.auth.sub]);
-    if (!driver.rows[0] || driver.rows[0].status !== "approved") {
-      return res.status(403).json({ error: "Motorista ainda não aprovado." });
-    }
-    const r = await pool.query(`
-      UPDATE rides
-      SET driver_id=$1,status='accepted',accepted_at=CURRENT_TIMESTAMP
-      WHERE id=$2 AND status='searching' AND driver_id IS NULL
-      RETURNING *
-    `, [req.auth.sub, req.params.id]);
-    if (!r.rowCount) return res.status(409).json({ error: "Esta corrida já foi aceita ou não está disponível." });
-    const ride = await getRide(req.params.id);
-    res.json({ ride: ridePayload(ride) });
-  } catch (err) {
-    console.error("ACCEPT RIDE:", err);
-    res.status(500).json({ error: "Erro ao aceitar corrida." });
+    if (req.user.role !== "driver")
+      return res.status(403).json({ error: "Somente motoristas." });
+
+    const result = await q(
+      `UPDATE rides r
+       SET driver_id=$1, status='accepted', accepted_at=NOW()
+       FROM users d
+       LEFT JOIN driver_profiles dp ON dp.user_id=d.id
+       WHERE r.id=$2
+         AND r.status='searching'
+         AND r.driver_id IS NULL
+         AND d.id=$1
+         AND d.status='active'
+         AND (
+           r.women_only=FALSE
+           OR (d.gender='female' AND COALESCE(dp.service_mode,'all') IN ('all','women_only'))
+         )
+         AND (
+           COALESCE(dp.service_mode,'all')='all'
+           OR (COALESCE(dp.service_mode,'all')='women_only' AND r.women_only=TRUE)
+         )
+       RETURNING r.*`,
+      [req.user.id, req.params.id]
+    );
+
+    if (!result.rowCount)
+      return res.status(409).json({ error: "Corrida indisponível para este motorista." });
+
+    res.json({ ride: result.rows[0] });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Não foi possível aceitar a corrida." });
   }
 });
 
-async function transitionRide(req, res, from, to, timeColumn) {
-  try {
-    if (req.auth.role !== "driver") return res.status(403).json({ error: "Somente motoristas." });
-    const r = await pool.query(`
-      UPDATE rides SET status=$1, ${timeColumn}=CURRENT_TIMESTAMP
-      WHERE id=$2 AND driver_id=$3 AND status=$4
-      RETURNING *
-    `, [to, req.params.id, req.auth.sub, from]);
-    if (!r.rowCount) return res.status(409).json({ error: "A corrida não está no estado esperado." });
-    const ride = await getRide(req.params.id);
-    res.json({ ride: ridePayload(ride) });
-  } catch (err) {
-    console.error("RIDE TRANSITION:", err);
-    res.status(500).json({ error: "Erro ao atualizar corrida." });
-  }
-}
+app.post("/api/rides/:id/arrive", auth, async (req, res) => {
+  const result = await q(
+    `UPDATE rides SET status='arrived', arrived_at=NOW()
+     WHERE id=$1 AND driver_id=$2 AND status='accepted'
+     RETURNING *`,
+    [req.params.id, req.user.id]
+  );
+  if (!result.rowCount) return res.status(409).json({ error: "Ação inválida." });
+  res.json({ ride: result.rows[0] });
+});
 
-app.post("/api/rides/:id/arrive", auth, (req,res) => transitionRide(req,res,'accepted','arrived','arrived_at'));
-app.post("/api/rides/:id/start", auth, (req,res) => transitionRide(req,res,'arrived','started','started_at'));
-app.post("/api/rides/:id/finish", auth, (req,res) => transitionRide(req,res,'started','finished','finished_at'));
+app.post("/api/rides/:id/start", auth, async (req, res) => {
+  const result = await q(
+    `UPDATE rides SET status='started', started_at=NOW()
+     WHERE id=$1 AND driver_id=$2 AND status IN ('accepted','arrived')
+     RETURNING *`,
+    [req.params.id, req.user.id]
+  );
+  if (!result.rowCount) return res.status(409).json({ error: "Ação inválida." });
+  res.json({ ride: result.rows[0] });
+});
+
+app.post("/api/rides/:id/finish", auth, async (req, res) => {
+  const result = await q(
+    `UPDATE rides SET status='finished', finished_at=NOW()
+     WHERE id=$1 AND driver_id=$2 AND status='started'
+     RETURNING *`,
+    [req.params.id, req.user.id]
+  );
+  if (!result.rowCount) return res.status(409).json({ error: "Ação inválida." });
+  res.json({ ride: result.rows[0] });
+});
 
 app.post("/api/rides/:id/cancel", auth, async (req, res) => {
-  try {
-    const ride = await getRide(req.params.id);
-    if (!ride) return res.status(404).json({ error: "Corrida não encontrada." });
-    const isPassenger = Number(ride.passenger_id) === Number(req.auth.sub);
-    const isDriver = Number(ride.driver_id) === Number(req.auth.sub);
-    if (!isPassenger && !isDriver) return res.status(403).json({ error: "Você não participa desta corrida." });
-    if (['finished','cancelled'].includes(ride.status)) return res.status(409).json({ error: "Esta corrida já foi encerrada." });
+  const current = await q("SELECT * FROM rides WHERE id=$1", [req.params.id]);
+  if (!current.rowCount) return res.status(404).json({ error: "Corrida não encontrada." });
 
-    let compensation = 0;
-    if (isPassenger && ride.status === 'started' && ride.started_at) {
-      const minutes = (Date.now() - new Date(ride.started_at).getTime()) / 60000;
-      if (minutes >= 3) compensation = 5;
-    }
+  const ride = current.rows[0];
+  const isPassenger = ride.passenger_id === req.user.id;
+  const isDriver = ride.driver_id === req.user.id;
 
-    await pool.query(`
-      UPDATE rides
-      SET status='cancelled',cancelled_at=CURRENT_TIMESTAMP,cancelled_by=$1,driver_compensation=$2
-      WHERE id=$3
-    `, [isPassenger ? 'passenger' : 'driver', compensation, ride.id]);
-    const updated = await getRide(ride.id);
-    res.json({ ride: ridePayload(updated), message: compensation ? `Cancelamento registrado. Compensação do motorista: R$ ${compensation.toFixed(2)}.` : "Corrida cancelada." });
-  } catch (err) {
-    console.error("CANCEL RIDE:", err);
-    res.status(500).json({ error: "Erro ao cancelar corrida." });
+  if (!isPassenger && !isDriver)
+    return res.status(403).json({ error: "Acesso negado." });
+
+  if (!["searching","accepted","arrived","started"].includes(ride.status))
+    return res.status(409).json({ error: "Essa corrida não pode mais ser cancelada." });
+
+  let compensation = 0;
+
+  if (isPassenger && ride.status === "started" && ride.started_at) {
+    const minutes = (Date.now() - new Date(ride.started_at).getTime()) / 60000;
+    if (minutes >= 3) compensation = 5;
   }
-});
 
-app.post("/api/admin/login", async (req, res) => {
-  const email = clean(req.body.email).toLowerCase();
-  const password = String(req.body.password || "");
-
-  if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
-    return res.status(401).json({ error: "Credenciais administrativas inválidas." });
-  }
+  const result = await q(
+    `UPDATE rides
+     SET status='cancelled',
+         cancelled_at=NOW(),
+         cancelled_by=$1,
+         driver_compensation=$2
+     WHERE id=$3
+     RETURNING *`,
+    [isPassenger ? "passenger" : "driver", compensation, req.params.id]
+  );
 
   res.json({
-    token: jwt.sign(
-      { sub: "admin", role: "admin" },
-      JWT_SECRET,
-      { expiresIn: "8h" }
-    )
+    ride: result.rows[0],
+    compensation,
+    message: compensation
+      ? "Corrida cancelada. Foi registrada uma compensação de R$ 5,00 para o motorista."
+      : "Corrida cancelada."
   });
 });
 
-app.get("/api/admin/drivers", auth, admin, async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT u.id,u.name,u.cpf,u.phone,u.email,u.status,u.created_at,
-             d.cnh,d.plate,d.vehicle_model,d.document_path
-      FROM users u
-      JOIN driver_profiles d ON d.user_id=u.id
-      ORDER BY u.created_at DESC
-    `);
-    res.json({ drivers: result.rows });
-  } catch (err) {
-    console.error("ADMIN DRIVERS:", err);
-    res.status(500).json({ error: "Erro ao carregar motoristas." });
+// Administração
+app.post("/api/admin/login", async (req, res) => {
+  const { email, password } = req.body;
+  if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD)
+    return res.status(503).json({ error: "Admin não configurado no servidor." });
+
+  if (
+    String(email).toLowerCase() !== String(process.env.ADMIN_EMAIL).toLowerCase() ||
+    String(password) !== String(process.env.ADMIN_PASSWORD)
+  ) {
+    return res.status(401).json({ error: "Credenciais administrativas inválidas." });
   }
+
+  const token = jwt.sign({ admin: true }, JWT_SECRET, { expiresIn: "8h" });
+  res.json({ token });
 });
 
-app.post("/api/admin/drivers/:id/approve", auth, admin, async (req, res) => {
+function adminAuth(req, res, next) {
+  const h = req.headers.authorization || "";
+  const token = h.startsWith("Bearer ") ? h.slice(7) : null;
+  if (!token) return res.status(401).json({ error: "Não autenticado." });
   try {
-    await pool.query(
-      "UPDATE users SET status='approved' WHERE id=$1 AND role='driver'",
-      [req.params.id]
-    );
-    await pool.query(
-      "UPDATE driver_profiles SET approved_at=CURRENT_TIMESTAMP WHERE user_id=$1",
-      [req.params.id]
-    );
-    res.json({ ok: true, message: "Motorista aprovado." });
-  } catch (err) {
-    console.error("APPROVE:", err);
-    res.status(500).json({ error: "Erro ao aprovar motorista." });
-  }
-});
-
-app.post("/api/admin/drivers/:id/reject", auth, admin, async (req, res) => {
-  try {
-    await pool.query(
-      "UPDATE users SET status='rejected' WHERE id=$1 AND role='driver'",
-      [req.params.id]
-    );
-    res.json({ ok: true, message: "Cadastro rejeitado." });
-  } catch (err) {
-    console.error("REJECT:", err);
-    res.status(500).json({ error: "Erro ao rejeitar cadastro." });
-  }
-});
-
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
-});
-
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(400).json({ error: err.message || "Erro na requisição." });
-});
-
-async function start() {
-  try {
-    await initDatabase();
-    await pool.query("SELECT 1");
-    app.listen(PORT, () => {
-      console.log(`DYABY rodando na porta ${PORT} com PostgreSQL`);
-    });
-  } catch (err) {
-    console.error("Falha ao iniciar DYABY:", err);
-    process.exit(1);
+    const data = jwt.verify(token, JWT_SECRET);
+    if (!data.admin) throw new Error();
+    req.admin = true;
+    next();
+  } catch {
+    res.status(401).json({ error: "Sessão administrativa inválida." });
   }
 }
 
-start();
+app.get("/api/admin/drivers", adminAuth, async (req, res) => {
+  const result = await q(
+    `SELECT u.id,u.name,u.cpf,u.phone,u.email,u.gender,u.status,u.created_at,
+            dp.cnh,dp.plate,dp.vehicle_model,dp.service_mode,dp.approved_at
+     FROM users u
+     JOIN driver_profiles dp ON dp.user_id=u.id
+     WHERE u.role='driver'
+     ORDER BY u.created_at DESC`
+  );
+  res.json({ drivers: result.rows });
+});
+
+app.post("/api/admin/drivers/:id/approve", adminAuth, async (req, res) => {
+  const result = await q(
+    `UPDATE users SET status='active' WHERE id=$1 AND role='driver' RETURNING id,name,status`,
+    [req.params.id]
+  );
+  if (!result.rowCount) return res.status(404).json({ error: "Motorista não encontrado." });
+
+  await q(
+    `UPDATE driver_profiles SET approved_at=NOW() WHERE user_id=$1`,
+    [req.params.id]
+  );
+
+  res.json({ driver: result.rows[0] });
+});
+
+app.post("/api/admin/drivers/:id/reject", adminAuth, async (req, res) => {
+  const result = await q(
+    `UPDATE users SET status='rejected' WHERE id=$1 AND role='driver' RETURNING id,name,status`,
+    [req.params.id]
+  );
+  if (!result.rowCount) return res.status(404).json({ error: "Motorista não encontrado." });
+  res.json({ driver: result.rows[0] });
+});
+
+// Frontend
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
+initDatabase()
+  .then(() => {
+    app.listen(PORT, () => console.log(`DYABY rodando na porta ${PORT}`));
+  })
+  .catch((err) => {
+    console.error("Falha ao iniciar banco:", err);
+    process.exit(1);
+  });
