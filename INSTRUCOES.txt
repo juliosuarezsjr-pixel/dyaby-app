@@ -1,4 +1,4 @@
-DYABY V3.3 — CORREÇÃO MOTORISTA, ENTREGAS E MAPAS
+DYABY V3.4 — CORRIDA COM NAVEGAÇÃO E LOCALIZAÇÃO EM TEMPO REAL
 
 1. Suba estes arquivos para a branch main do GitHub:
    - index.html
@@ -8,24 +8,23 @@ DYABY V3.3 — CORREÇÃO MOTORISTA, ENTREGAS E MAPAS
 
 2. O Render fará o deploy automaticamente.
 
-CORREÇÕES DESTA VERSÃO:
-- Motorista não tenta mais pedir corrida de passageiro ao tocar em “Corrida”.
-- O botão “Corrida” do menu inferior abre a área de corridas do motorista.
-- Encomendas/corridas disponíveis para novos motoristas ficam limitadas a 20 minutos.
-- Uma entrega aceita sai da lista e permanece em “Minha entrega ativa”.
-- Motorista não pode aceitar outra entrega enquanto possui uma entrega ativa.
-- Após aceitar uma entrega aparece “Iniciar entrega”.
-- Após iniciar, aparece o mapa com rota até a coleta.
-- Depois da coleta, o mapa passa a mostrar a rota até o destino.
-- Corridas aceitas mostram mapa e rota.
-- Corridas têm “Cheguei”, “Iniciar corrida” e “Finalizar corrida”.
-- A localização do motorista continua sendo atualizada pelo GPS.
+CORRIDAS:
+- Motorista aceita a corrida e recebe mapa de navegação até o ponto de embarque.
+- Motorista pode marcar “Cheguei para embarque”.
+- Depois pode “Iniciar corrida”.
+- Ao iniciar, o mapa muda automaticamente para o destino.
+- Motorista pode “Finalizar corrida”.
+- A localização do motorista é enviada ao servidor a cada 3 segundos.
+- O cliente atualiza a posição do motorista aproximadamente a cada 2 segundos.
+- O cliente vê no mapa a moto do motorista, a rota e uma estimativa de tempo/distância.
+- As coordenadas do ponto de embarque são salvas na corrida para a navegação funcionar mesmo quando o texto do endereço for “Minha localização”.
 
-BANCO:
-- A atualização usa a tabela orders existente.
-- O status “out_for_delivery” é usado para a etapa de entrega iniciada.
-- Não é necessário apagar o banco.
+ENCOMENDAS:
+- Mantém o fluxo de encomendas já existente.
+- Não substituir as telas de validação de coleta/entrega que já funcionam.
 
-AMBIENTE DO RENDER:
-DATABASE_URL e JWT_SECRET continuam obrigatórios.
-ADMIN_EMAIL e ADMIN_PASSWORD são necessários para /admin.
+IMPORTANTE:
+- Não apagar nem recriar o banco PostgreSQL.
+- DATABASE_URL e JWT_SECRET continuam obrigatórios.
+- ADMIN_EMAIL e ADMIN_PASSWORD continuam necessários para /admin.
+- A localização em tempo real depende de o motorista permitir a localização no navegador/celular.

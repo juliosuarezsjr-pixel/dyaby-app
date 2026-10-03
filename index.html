@@ -53,7 +53,9 @@ function goBackHome(){showHomeByRole()}
 function setupDriver(d){$('driverName').textContent=currentUser.name;$('driverStatus').textContent=currentUser.status==='active'?'Cadastro aprovado.':'Cadastro pendente.';$('driverPending').style.display=currentUser.status==='active'?'none':'block';$('driverApproved').style.display=currentUser.status==='active'?'block':'none';if(d.driver)$('serviceMode').value=d.driver.service_mode||'all';if(currentUser.status==='active'){loadAvailable();loadAvailableDeliveries();startDriverLocation()}}
 function setupCommerce(d){$('commerceName').textContent=d.commerce?.trade_name||currentUser.name;$('commerceStatus').innerHTML=currentUser.status==='active'?'<span class="ok">✅ Comércio aprovado</span>':'<span>⏳ Comércio aguardando aprovação.</span>';loadProducts();loadCommerceOrders();$('commerceProfileData').innerHTML='<b>'+esc(d.commerce?.trade_name||'')+'</b><p class="small">'+esc(d.commerce?.category||'')+'</p><p class="small">'+esc(d.commerce?.cnpj||'')+'</p><p class="small">'+esc(d.commerce?.address||'')+'</p>'}
 function startHeartbeat(){if(window._hb)clearInterval(window._hb);window._hb=setInterval(()=>{if(token)fetch(API+'/me',{headers:{Authorization:'Bearer '+token}}).catch(()=>{})},60000)}
-function startDriverLocation(){if(driverTimer)clearInterval(driverTimer);updateDriverLocation();driverTimer=setInterval(updateDriverLocation,10000);if(window._rideAvailabilityTimer)clearInterval(window._rideAvailabilityTimer);window._rideAvailabilityTimer=setInterval(()=>{if(currentUser?.role==='driver'&&currentUser?.status==='active'){loadAvailable();syncDriverActive();syncDriverDelivery();}},2500);syncDriverActive();syncDriverDelivery()}function updateDriverLocation(){if(currentUser?.role!=='driver'||currentUser.status!=='active'||!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(p=>api('/driver/location',{method:'POST',body:JSON.stringify({latitude:p.coords.latitude,longitude:p.coords.longitude})}).catch(()=>{}),()=>{},{enableHighAccuracy:true,maximumAge:10000,timeout:8000})}
+function startDriverLocation(){if(driverTimer)clearInterval(driverTimer);updateDriverLocation();driverTimer=setInterval(updateDriverLocation,3000);if(window._rideAvailabilityTimer)clearInterval(window._rideAvailabilityTimer);window._rideAvailabilityTimer=setInterval(()=>{if(currentUser?.role==='driver'&&currentUser?.status==='active'){loadAvailable();syncDriverActive();syncDriverDelivery()}},2000);syncDriverActive();syncDriverDelivery()}
+function updateDriverLocation(){if(currentUser?.role!=='driver'||currentUser.status!=='active'||!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(p=>api('/driver/location',{method:'POST',body:JSON.stringify({latitude:p.coords.latitude,longitude:p.coords.longitude})}).catch(()=>{}),()=>{},{enableHighAccuracy:true,maximumAge:2000,timeout:8000})}
+
 function initMap(){if(map){map.invalidateSize();return}map=L.map('map').setView([-18.5789,-46.518],13);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);locateMe()}
 function openRide(w){if(currentUser?.role!=='passenger'){alert('Somente clientes podem pedir corrida.');return}womenRide=w;$('womenNotice').style.display=w?'block':'none';$('rideDestination').value=$('homeDestination').value||'';show('ride');setTimeout(initMap,150)}
 function setMapMode(m){['road','satellite','dark','traffic'].forEach(x=>$('m'+x[0].toUpperCase()+x.slice(1))?.classList.toggle('active',x===m));if(!map)return;if(m==='satellite'){if(window._sat){map.removeLayer(window._sat)}window._sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19}).addTo(map)}else if(m==='dark'){if(window._dark){map.removeLayer(window._dark)}window._dark=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:20}).addTo(map)}else if(m==='road'){if(window._sat)map.removeLayer(window._sat);if(window._dark)map.removeLayer(window._dark)}else $('mapMsg').textContent='Trânsito real será ativado quando o Google Maps estiver configurado.'}
@@ -65,7 +67,8 @@ async function requestRide(){
   const distance=parseFloat(($('distanceValue').textContent||'0').replace(',','.'));
   if(!destination||!Number.isFinite(distance)||distance<=0){$('rideMsg').textContent='Informe o destino e calcule a rota.';return;}
   $('rideMsg').textContent='Solicitando...';
-  const payload={destination,distanceKm:Number(distance.toFixed(2)),womenOnly:womenRide,origin:'Minha localização'};
+  if(!originCoords&&navigator.geolocation){try{const p=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,timeout:5000,maximumAge:10000}));originCoords=[p.coords.latitude,p.coords.longitude];}catch{}}
+  const payload={destination,distanceKm:Number(distance.toFixed(2)),womenOnly:womenRide,origin:'Minha localização',originLat:originCoords?.[0]??null,originLng:originCoords?.[1]??null};
   try{
     const d=await api('/rides',{method:'POST',body:JSON.stringify(payload)});
     currentRide=d.ride;
@@ -92,40 +95,37 @@ async function requestRide(){
 function renderTripCard(){
   if(!currentRide)return;
   const status=String(currentRide.status||'searching');
-  const labels={searching:['CORRIDA SOLICITADA','Sua solicitação está sendo enviada aos motoristas.','#3b82f6'],accepted:['MOTORISTA ACEITOU','Seu motorista aceitou a corrida.','#22c55e'],arrived:['MOTORISTA CHEGOU','Seu motorista chegou ao ponto de embarque.','#22c55e'],started:['CORRIDA EM ANDAMENTO','Boa viagem!','#22c55e'],finished:['CORRIDA FINALIZADA','Corrida concluída.','#22c55e'],cancelled:['CORRIDA CANCELADA',currentRide.cancelled_by==='passenger'?'O passageiro cancelou a corrida.':currentRide.cancelled_by==='system'?'A corrida expirou após 4 minutos sem motorista.':'Esta corrida foi cancelada.','#ef4444']};
+  const labels={searching:['PROCURANDO MOTORISTA','Sua solicitação está sendo enviada aos motoristas.','#3b82f6'],accepted:['MOTORISTA A CAMINHO','Seu motorista aceitou e está indo até você.','#22c55e'],arrived:['MOTORISTA CHEGOU','Seu motorista chegou ao ponto de embarque.','#22c55e'],started:['CORRIDA EM ANDAMENTO','Você está a caminho do destino.','#22c55e'],finished:['CORRIDA FINALIZADA','Corrida concluída.','#22c55e'],cancelled:['CORRIDA CANCELADA',currentRide.cancelled_by==='passenger'?'O passageiro cancelou a corrida.':currentRide.cancelled_by==='system'?'A corrida expirou após 4 minutos sem motorista.':'Esta corrida foi cancelada.','#ef4444']};
   const st=labels[status]||[status,'','#3b82f6'];
   if($('cancelRideBtn'))$('cancelRideBtn').style.display=['finished','cancelled'].includes(status)?'none':'block';
-  $('tripCard').innerHTML='<div style="padding:13px 14px;border-radius:12px;background:'+st[2]+';color:#fff;font-weight:800;text-align:center">'+st[0]+'</div><p class="small" style="text-align:center;margin:10px 0">'+st[1]+'</p><h2>📍 '+esc(currentRide.destination||'')+'</h2><p>📏 '+Number(currentRide.distance_km||0).toFixed(1)+' km</p><p class="price">Valor: R$ '+Number(currentRide.price||0).toFixed(2).replace('.',',')+'</p>'+(currentRide.driver_name?'<div style="display:flex;gap:10px;align-items:center;margin-top:12px">'+(currentRide.driver_photo?'<img src="'+esc(currentRide.driver_photo)+'" style="width:56px;height:56px;border-radius:50%;object-fit:cover">':'<div style="font-size:40px">🏍️</div>')+'<div><b>'+esc(currentRide.driver_name)+'</b><div class="small">Motorista</div></div></div>':'<p class="muted">Procurando motorista...</p>');
+  const driver=currentRide.driver_name;
+  const live=['accepted','arrived','started'].includes(status)&&Number.isFinite(Number(currentRide.driver_latitude))&&Number.isFinite(Number(currentRide.driver_longitude));
+  $('tripCard').innerHTML='<div style="padding:13px 14px;border-radius:16px;background:'+st[2]+';color:#fff;font-weight:800;text-align:center;font-size:17px">'+st[0]+'</div><p class="small" style="text-align:center;margin:10px 0">'+st[1]+'</p>'+(live?'<div id="tripMap" style="height:390px;border-radius:18px;overflow:hidden;margin:10px -2px 14px;border:1px solid #333;position:relative"></div>':'')+'<h2>📍 '+esc(currentRide.destination||'')+'</h2><p>📏 '+Number(currentRide.distance_km||0).toFixed(1)+' km</p><p class="price">Valor: R$ '+Number(currentRide.price||0).toFixed(2).replace('.',',')+'</p>'+(driver?'<div style="display:flex;gap:10px;align-items:center;margin-top:12px">'+(currentRide.driver_photo?'<img src="'+esc(currentRide.driver_photo)+'" style="width:56px;height:56px;border-radius:50%;object-fit:cover">':'<div style="font-size:40px">🏍️</div>')+'<div><b>'+esc(driver)+'</b><div class="small">Motorista · '+esc(currentRide.driver_vehicle_model||'Moto')+'</div></div></div>':'<p class="muted">Procurando motorista...</p>');
+  if(status==='searching')stopTripMap(); else if(live)updatePassengerLiveMap(); else stopTripMap();
   if(currentRide.driver_name)stopRadar();
-  if(['finished','cancelled'].includes(status))stopPassengerRidePolling();
 }
-async function refreshPassengerRide(){
-  if(!currentRide)return false;
-  try{
-    const d=await api('/rides/active');
-    const found=(d.rides||[]).find(r=>Number(r.id)===Number(currentRide.id));
-    if(found){currentRide=found;renderTripCard();return true;}
-    return false;
-  }catch{return false}
-}
-async function recoverPassengerRide(destination,distance){
-  for(let i=0;i<6;i++){
-    try{
-      const a=await api('/rides/active');
-      const rides=a.rides||[];
-      const found=rides.find(r=>r.status!=='cancelled'&&r.status!=='finished'&&r.destination===destination&&Math.abs(Number(r.distance_km)-distance)<0.05);
-      if(found)return found;
-    }catch{}
-    await new Promise(r=>setTimeout(r,1500));
+function stopTripMap(){if(window._tripMap){window._tripMap.remove();window._tripMap=null}window._tripDriverMarker=null;window._tripTargetMarker=null;window._tripRoute=null}
+async function updatePassengerLiveMap(){
+  if(!currentRide||!$('tripMap'))return;
+  const lat=Number(currentRide.driver_latitude),lng=Number(currentRide.driver_longitude);
+  if(!Number.isFinite(lat)||!Number.isFinite(lng))return;
+  if(!window._tripMap){window._tripMap=L.map('tripMap',{zoomControl:false}).setView([lat,lng],15);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(window._tripMap);L.control.zoom({position:'bottomright'}).addTo(window._tripMap)}else window._tripMap.invalidateSize();
+  const mIcon=L.divIcon({className:'dyaby-driver-marker',html:'🏍️',iconSize:[44,44],iconAnchor:[22,22]});
+  if(window._tripDriverMarker)window._tripDriverMarker.setLatLng([lat,lng]);else window._tripDriverMarker=L.marker([lat,lng],{icon:mIcon,zIndexOffset:1000}).addTo(window._tripMap).bindPopup('Motorista');
+  let target=null,targetLabel='Destino';
+  if(String(currentRide.status)==='started'){target=await geocodeText(currentRide.destination)}else if(Number.isFinite(Number(currentRide.origin_lat))&&Number.isFinite(Number(currentRide.origin_lng))){target=[Number(currentRide.origin_lat),Number(currentRide.origin_lng)];targetLabel='Seu embarque'}else target=await geocodeText(currentRide.origin||'');
+  if(target){
+    if(window._tripTargetMarker)window._tripTargetMarker.setLatLng(target);else window._tripTargetMarker=L.marker(target).addTo(window._tripMap).bindPopup(targetLabel);
+    try{const u='https://router.project-osrm.org/route/v1/driving/'+lng+','+lat+';'+target[1]+','+target[0]+'?overview=full&geometries=geojson';const d=await fetch(u).then(r=>r.json());if(d.routes?.[0]){if(window._tripRoute)window._tripMap.removeLayer(window._tripRoute);window._tripRoute=L.geoJSON(d.routes[0].geometry,{style:{weight:7}}).addTo(window._tripMap);const mins=Math.max(1,Math.round(d.routes[0].duration/60)),km=(d.routes[0].distance/1000).toFixed(1).replace('.',',');const info=document.querySelector('#tripMap');if(info){let old=info.querySelector('.live-overlay');if(!old){old=document.createElement('div');old.className='live-overlay';old.style='position:absolute;z-index:999;left:12px;right:12px;top:12px;background:rgba(20,20,20,.92);color:#fff;border-radius:14px;padding:10px 14px;font-weight:800;box-shadow:0 4px 15px rgba(0,0,0,.25)';info.appendChild(old)}old.innerHTML='🏍️ '+(String(currentRide.status)==='started'?'Motorista levando você':'Motorista chegando')+'<br><span style="font-weight:500">'+mins+' min · '+km+' km</span>'}window._tripMap.fitBounds(window._tripRoute.getBounds(),{padding:[35,35]})}}catch{}
   }
-  return null;
 }
+
 function startPassengerRidePolling(){
   if(window._passengerRideTimer)clearInterval(window._passengerRideTimer);
   window._passengerRideTimer=setInterval(async()=>{
     if(!currentRide||!['searching','accepted','arrived','started'].includes(String(currentRide.status))){stopPassengerRidePolling();return;}
     await refreshPassengerRide();
-  },2500);
+  },2000);
 }
 function stopPassengerRidePolling(){if(window._passengerRideTimer){clearInterval(window._passengerRideTimer);window._passengerRideTimer=null}}
 async function renderTrip(){if(!currentRide)return;await refreshPassengerRide();if(currentRide)renderTripCard()}
@@ -181,14 +181,15 @@ async function renderDriverActive(){
   if(!currentRide){$('driverActive').innerHTML='<p class="muted">Nenhuma corrida.</p>';return}
   if(currentRide.status==='cancelled'){$('driverActive').innerHTML='<div class="danger" style="font-weight:800;font-size:18px">🚨 CORRIDA CANCELADA PELO PASSAGEIRO</div><p>O passageiro cancelou a corrida.</p>'+(Number(currentRide.driver_compensation||0)>0?'<p class="price">💰 Compensação: R$ '+Number(currentRide.driver_compensation).toFixed(2).replace('.',',')+'</p>':'<p class="muted">Sem compensação registrada.</p>');return}
   let a='';
-  if(currentRide.status==='accepted')a+='<button class="btn dark" onclick="rideAction(\'arrive\')">📍 Cheguei</button>';
+  if(currentRide.status==='accepted')a+='<button class="btn dark" onclick="rideAction(\'arrive\')">📍 Cheguei para embarque</button>';
   if(['accepted','arrived'].includes(currentRide.status))a+='<button class="btn primary" onclick="rideAction(\'start\')">🏍️ Iniciar corrida</button>';
   if(currentRide.status==='started')a+='<button class="btn primary" onclick="rideAction(\'finish\')">✅ Finalizar corrida</button>';
   if(['accepted','arrived','started'].includes(currentRide.status))a+='<button class="btn outline" onclick="cancelDriverRide()">Cancelar</button>';
-  $('driverActive').innerHTML='<p>Status: <b>'+esc(currentRide.status)+'</b></p><p>👤 '+esc(currentRide.passenger_name||'Passageiro')+'</p><p>📍 '+esc(currentRide.status==='started'?(currentRide.destination||'Destino'):(currentRide.origin||'Local de embarque'))+'</p><p>📏 '+Number(currentRide.distance_km||0).toFixed(1)+' km</p><p>💰 <span class="price">R$ '+Number(currentRide.price).toFixed(2).replace('.',',')+'</span></p><div id="driverMap" style="height:300px;border-radius:16px;overflow:hidden;border:1px solid #333;margin:12px 0"></div>'+a;
+  $('driverActive').innerHTML='<p>Status: <b>'+esc(currentRide.status)+'</b></p><p>👤 '+esc(currentRide.passenger_name||'Passageiro')+'</p><p>📍 '+esc(currentRide.status==='started'?(currentRide.destination||'Destino'):(currentRide.origin||'Local de embarque'))+'</p><p>📏 '+Number(currentRide.distance_km||0).toFixed(1)+' km</p><p>💰 <span class="price">R$ '+Number(currentRide.price).toFixed(2).replace('.',',')+'</span></p><div id="driverMap" style="height:430px;border-radius:18px;overflow:hidden;border:1px solid #333;margin:12px 0;position:relative"></div>'+a;
   const targetText=currentRide.status==='started'?currentRide.destination:currentRide.origin;
-  const target=await geocodeText(targetText||currentRide.destination);
+  const target=currentRide.status!=='started'&&Number.isFinite(Number(currentRide.origin_lat))&&Number.isFinite(Number(currentRide.origin_lng))?[Number(currentRide.origin_lat),Number(currentRide.origin_lng)]:await geocodeText(targetText||currentRide.destination);
   if(target)showDriverRoute(target,currentRide.status==='started'?'Destino da corrida':'Ponto de embarque');
+  setTimeout(()=>{const dm=document.getElementById('driverMap');if(dm&&!dm.querySelector('.driver-live-overlay')){const ov=document.createElement('div');ov.className='driver-live-overlay';ov.style='position:absolute;z-index:999;left:14px;right:14px;top:14px;background:rgba(20,20,20,.92);color:#fff;border-radius:16px;padding:12px 15px;font-weight:800;font-size:17px;box-shadow:0 4px 18px rgba(0,0,0,.25)';ov.innerHTML=(currentRide.status==='started'?'🏁 Indo para o destino':'📍 Indo para buscar o passageiro')+'<br><span style="font-weight:500;font-size:14px">'+esc(currentRide.status==='started'?currentRide.destination:(currentRide.origin||'Ponto de embarque'))+'</span>';dm.appendChild(ov)}},50);
 }
 async function rideAction(a){try{const d=await api('/rides/'+currentRide.id+'/'+a,{method:'POST',body:'{}'});currentRide=d.ride;await renderDriverActive();loadAvailable()}catch(e){alert(e.message)}}
 async function cancelDriverRide(){if(!confirm('Cancelar corrida?'))return;try{await api('/rides/'+currentRide.id+'/cancel',{method:'POST',body:'{}'});currentRide=null;renderDriverActive();loadAvailable()}catch(e){alert(e.message)}}
@@ -226,7 +227,7 @@ async function renderDriverDelivery(o){
   if(o.status==='driver_accepted')button='<button class="btn primary" onclick="startDelivery('+o.id+')">🚚 Iniciar entrega</button>';
   else if(o.status==='out_for_delivery')button='<button class="btn primary" onclick="deliveryAction(\'pickup\','+o.id+')">📦 Validar coleta</button>';
   else if(o.status==='picked_up')button='<button class="btn primary" onclick="deliveryAction(\'deliver\','+o.id+')">✅ Finalizar entrega</button>';
-  $('driverDeliveryActive').innerHTML='<p class="ok" style="font-weight:800">'+targetStatus+'</p><p>Status: <b>'+esc(o.status)+'</b></p><p>👤 '+esc(o.customer_name||'Cliente')+'</p><p>📦 '+esc(o.package_type||'Pedido')+'</p><p>📍 <b>Coleta:</b> '+esc(o.pickup_address||'')+'</p><p>🎯 <b>Entrega:</b> '+esc(o.delivery_address||o.delivery_address||'')+'</p><div id="deliveryDriverMap" style="height:300px;border-radius:16px;overflow:hidden;border:1px solid #333;margin:12px 0"></div>'+button;
+  $('driverDeliveryActive').innerHTML='<p class="ok" style="font-weight:800">'+targetStatus+'</p><p>Status: <b>'+esc(o.status)+'</b></p><p>👤 '+esc(o.customer_name||'Cliente')+'</p><p>📦 '+esc(o.package_type||'Pedido')+'</p><p>📍 <b>Coleta:</b> '+esc(o.pickup_address||'')+'</p><p>🎯 <b>Entrega:</b> '+esc(o.delivery_address||o.delivery_address||'')+'</p><div id="deliveryDriverMap" style="height:430px;border-radius:18px;overflow:hidden;border:1px solid #333;margin:12px 0;position:relative"></div>'+button;
   setTimeout(()=>showDeliveryDriverRoute(o),50);
 }
 async function showDeliveryDriverRoute(o){
