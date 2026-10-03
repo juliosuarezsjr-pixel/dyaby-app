@@ -1,30 +1,30 @@
-DYABY V2.9 — CORREÇÃO DE CORRIDAS E ENCOMENDAS
+DYABY V3.0 — CORREÇÃO COMPLETA DE ENCOMENDAS
 
-1. Suba estes arquivos para a branch main do GitHub:
-   - index.html
-   - server.js
-   - package.json
-   - INSTRUCOES.txt
+Arquivos para subir na branch main do GitHub:
+- index.html
+- server.js
+- package.json
+- INSTRUCOES.txt
 
-2. O Render fará o deploy automaticamente.
-
-CORRIDAS:
-- Até 1 km: R$ 5,00.
-- Acima de 1 km: cálculo pela distância.
-- Corrida aparece para motoristas imediatamente e fica disponível no máximo 4 minutos.
-- Motorista aceita: sai da lista dos outros motoristas.
-- Cliente acompanha automaticamente o status.
-- Se o passageiro cancelar depois de 3 minutos e já houver motorista aceitado, registra R$ 5,00 de compensação para o motorista.
-- A cancelamento é sincronizado automaticamente no painel do motorista.
+O Render fará o deploy automaticamente.
 
 ENCOMENDAS:
-- Cliente informa o tipo da encomenda e descrição.
-- Cliente pode usar a localização automática para o ponto de coleta.
-- Cliente informa o destino; o sistema calcula distância e taxa.
-- Botão “Buscar entregador” cria a encomenda e a coloca imediatamente para os entregadores.
-- Entregador vê tipo, descrição, localização de coleta, destino, distância e valor.
-- O cliente acompanha quando um entregador aceita.
+- “Buscar entregador” cria uma encomenda persistida no PostgreSQL.
+- A encomenda aparece para entregadores aprovados e com serviço de entrega.
+- O cliente acompanha: buscando entregador → entregador aceitou → em entrega → concluída.
+- Cliente pode cancelar enquanto a entrega estiver ativa.
+- Entregador pode cancelar uma entrega ativa.
+- A coleta exige código de 4 dígitos + pelo menos 1 foto (até 3).
+- A entrega exige código de 4 dígitos + pelo menos 1 foto (até 3).
+- Os códigos são gerados no servidor e ficam vinculados à encomenda.
+- Depois da entrega, o cliente pode avaliar o entregador de 1 a 5 estrelas.
+- A taxa da plataforma e o repasse do entregador são calculados no fechamento.
+- O fluxo antigo de pickup/deliver não pode finalizar encomendas do tipo package sem validação.
 
-AMBIENTE DO RENDER:
-DATABASE_URL e JWT_SECRET continuam obrigatórios.
-ADMIN_EMAIL e ADMIN_PASSWORD são necessários para /admin.
+CORRIDAS:
+- Mantido o fluxo existente de corrida, radar, cancelamento e compensação.
+
+BANCO:
+- A inicialização cria automaticamente os campos de validação de encomendas.
+- DATABASE_URL e JWT_SECRET continuam obrigatórios.
+- ADMIN_EMAIL e ADMIN_PASSWORD continuam necessários para /admin.
