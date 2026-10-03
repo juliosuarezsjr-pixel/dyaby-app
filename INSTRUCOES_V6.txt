@@ -1,0 +1,5 @@
+DYABY V6 — Visual inspirado no mockup enviado, com três perfis reais: Cliente, Entregador e Comércio.
+
+O cadastro já tinha os três papéis no backend; esta versão torna a escolha visual e o login coerente com o papel retornado pelo servidor. O backend foi mantido para preservar as funções existentes.
+
+Enviar os três arquivos para o GitHub: index.html, server.js e package.json.
