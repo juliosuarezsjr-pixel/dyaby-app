@@ -198,6 +198,7 @@
   <div class="card"><b>📋 Problema com uma corrida</b><p>Informe o problema e o suporte poderá analisar.</p><button class="btn dark" onclick="alert('Chamado registrado.')">Abrir chamado</button></div>
 </section>
 
+
 <section id="adminLogin" class="screen">
   <div class="topbrand"><b>DYABY</b><span class="badge">🔐 Admin</span></div>
   <h1>Área administrativa</h1>
@@ -215,7 +216,10 @@
   <div class="topbrand"><b>DYABY</b><span class="badge">🛠️ Admin</span></div>
   <h1>Motoristas</h1>
   <div class="card">
-    <div class="row"><b>Cadastros para análise</b><button class="btn dark" style="width:110px" onclick="loadAdminDrivers()">Atualizar</button></div>
+    <div class="row">
+      <b>Cadastros para análise</b>
+      <button class="btn dark" style="width:110px" onclick="loadAdminDrivers()">Atualizar</button>
+    </div>
     <div id="adminDrivers">Carregando...</div>
   </div>
   <button class="btn outline" onclick="adminLogout()">Sair da administração</button>
@@ -235,76 +239,6 @@ const API = "/api";
 let token = localStorage.getItem("dyaby_token");
 let currentUser = null;
 let currentRide = null;
-let adminToken = localStorage.getItem("dyaby_admin_token") || null;
-
-async function adminLogin(){
-  const msg=document.getElementById("adminLoginMsg");
-  msg.textContent="Entrando...";
-  try{
-    const data=await api("/admin/login",{method:"POST",body:JSON.stringify({
-      email:document.getElementById("adminEmail").value.trim(),
-      password:document.getElementById("adminPassword").value
-    })});
-    adminToken=data.token;
-    localStorage.setItem("dyaby_admin_token",adminToken);
-    msg.textContent="";
-    show("admin");
-    await loadAdminDrivers();
-  }catch(e){ msg.textContent=e.message; }
-}
-
-async function adminApi(path, options={}){
-  const headers=Object.assign({"Content-Type":"application/json"},options.headers||{},adminToken?{"Authorization":"Bearer "+adminToken}:{});
-  const res=await fetch(API+path,Object.assign({},options,{headers}));
-  const data=await res.json().catch(()=>({}));
-  if(!res.ok){ if(res.status===401){adminLogout(false);} throw new Error(data.error||"Erro administrativo"); }
-  return data;
-}
-
-async function loadAdminDrivers(){
-  const box=document.getElementById("adminDrivers");
-  box.textContent="Carregando...";
-  try{
-    const data=await adminApi("/admin/drivers");
-    if(!data.drivers.length){ box.innerHTML='<p class="muted">Nenhum motorista cadastrado.</p>'; return; }
-    box.innerHTML=data.drivers.map(d=>{
-      const status=d.status||"pending";
-      const label=status==="active"?"✅ Aprovado":status==="rejected"?"❌ Rejeitado":"⏳ Pendente";
-      return `<div class="card" style="margin:10px 0;background:#0e0e0e">
-        <b>${escapeHtml(d.name||"")}</b><div class="small">${escapeHtml(d.email||"")}</div>
-        <div class="small">CPF: ${escapeHtml(d.cpf||"—")} · WhatsApp: ${escapeHtml(d.phone||"—")}</div>
-        <div class="small">CNH: ${escapeHtml(d.cnh||"—")} · Moto: ${escapeHtml(d.vehicle_model||"—")} · Placa: ${escapeHtml(d.plate||"—")}</div>
-        <p>${label}</p>
-        ${status==="pending"?`<div class="row"><button class="btn primary" style="width:48%" onclick="approveDriver(${Number(d.id)})">Aprovar</button><button class="btn outline" style="width:48%" onclick="rejectDriver(${Number(d.id)})">Rejeitar</button></div>`:""}
-      </div>`;
-    }).join("");
-  }catch(e){ box.innerHTML='<p class="message">'+escapeHtml(e.message)+'</p>'; }
-}
-
-async function approveDriver(id){
-  try{
-    await adminApi(`/admin/drivers/${id}/approve`,{method:"POST"});
-    alert("Motorista aprovado com sucesso.");
-    await loadAdminDrivers();
-  }catch(e){ alert(e.message); }
-}
-
-async function rejectDriver(id){
-  if(!confirm("Rejeitar este cadastro de motorista?")) return;
-  try{
-    await adminApi(`/admin/drivers/${id}/reject`,{method:"POST"});
-    await loadAdminDrivers();
-  }catch(e){ alert(e.message); }
-}
-
-function adminLogout(goWelcome=true){
-  adminToken=null; localStorage.removeItem("dyaby_admin_token");
-  if(goWelcome) show("welcome");
-}
-
-</script>
-
-
 let womenRide = false;
 let map = null, originMarker = null, destinationMarker = null, routeLayer = null;
 let originCoords = null, destinationCoords = null;
@@ -702,6 +636,101 @@ function startPolling(){
   },5000);
 }
 window.addEventListener("load",()=>{loadMe().then(startPolling)});
+
+
+let adminToken = localStorage.getItem("dyaby_admin_token") || null;
+
+async function adminLogin(){
+  const msg = document.getElementById("adminLoginMsg");
+  msg.textContent = "Entrando...";
+  try {
+    const data = await api("/admin/login", {
+      method: "POST",
+      body: JSON.stringify({
+        email: document.getElementById("adminEmail").value.trim(),
+        password: document.getElementById("adminPassword").value
+      })
+    });
+    adminToken = data.token;
+    localStorage.setItem("dyaby_admin_token", adminToken);
+    msg.textContent = "";
+    show("admin");
+    await loadAdminDrivers();
+  } catch (e) {
+    msg.textContent = e.message;
+  }
+}
+
+async function adminApi(path, options = {}){
+  const headers = Object.assign(
+    {"Content-Type":"application/json"},
+    options.headers || {},
+    adminToken ? {"Authorization":"Bearer " + adminToken} : {}
+  );
+  const res = await fetch(API + path, Object.assign({}, options, {headers}));
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (res.status === 401) adminLogout(false);
+    throw new Error(data.error || "Erro administrativo");
+  }
+  return data;
+}
+
+async function loadAdminDrivers(){
+  const box = document.getElementById("adminDrivers");
+  box.textContent = "Carregando...";
+  try {
+    const data = await adminApi("/admin/drivers");
+    if (!data.drivers.length) {
+      box.innerHTML = '<p class="muted">Nenhum motorista cadastrado.</p>';
+      return;
+    }
+    box.innerHTML = data.drivers.map(d => {
+      const status = d.status || "pending";
+      const label = status === "active" ? "✅ Aprovado" :
+                    status === "rejected" ? "❌ Rejeitado" : "⏳ Pendente";
+      return `<div class="card" style="margin:10px 0;background:#0e0e0e">
+        <b>${escapeHtml(d.name || "")}</b>
+        <div class="small">${escapeHtml(d.email || "")}</div>
+        <div class="small">CPF: ${escapeHtml(d.cpf || "—")} · WhatsApp: ${escapeHtml(d.phone || "—")}</div>
+        <div class="small">CNH: ${escapeHtml(d.cnh || "—")} · Moto: ${escapeHtml(d.vehicle_model || "—")} · Placa: ${escapeHtml(d.plate || "—")}</div>
+        <p>${label}</p>
+        ${status === "pending" ? `<div class="row">
+          <button class="btn primary" style="width:48%" onclick="approveDriver(${Number(d.id)})">Aprovar</button>
+          <button class="btn outline" style="width:48%" onclick="rejectDriver(${Number(d.id)})">Rejeitar</button>
+        </div>` : ""}
+      </div>`;
+    }).join("");
+  } catch (e) {
+    box.innerHTML = '<p class="message">' + escapeHtml(e.message) + '</p>';
+  }
+}
+
+async function approveDriver(id){
+  try {
+    await adminApi(`/admin/drivers/${id}/approve`, {method:"POST"});
+    alert("Motorista aprovado com sucesso.");
+    await loadAdminDrivers();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+async function rejectDriver(id){
+  if (!confirm("Rejeitar este cadastro de motorista?")) return;
+  try {
+    await adminApi(`/admin/drivers/${id}/reject`, {method:"POST"});
+    await loadAdminDrivers();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+function adminLogout(goWelcome = true){
+  adminToken = null;
+  localStorage.removeItem("dyaby_admin_token");
+  if (goWelcome) show("welcome");
+}
 
 </script>
 </body>
