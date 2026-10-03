@@ -1,0 +1,18 @@
+DYABY V4 VISUAL — baseada no mockup enviado
+
+Esta versão aplica a identidade visual premium do mockup ao sistema atual sem trocar a lógica/API existente.
+
+Arquivos principais:
+- index.html — interface visual
+- mascot.jpg — mascote DYABY
+- logo.png — logo/ícone DYABY
+- server.js — backend atual
+- package.json — dependências
+
+DEPLOY:
+1. Substitua o index.html no GitHub pelo desta versão.
+2. Envie também mascot.jpg e logo.png para a raiz do projeto.
+3. NÃO substitua server.js por outro servidor se o seu Render já estiver usando uma versão mais nova.
+4. Faça commit na branch main e aguarde o Render publicar.
+
+A aparência foi aproximada do terceiro mockup: home premium, busca, cartões de serviços, entrega, comida/bolos, área feminina, perfil e identidade DYABY.
