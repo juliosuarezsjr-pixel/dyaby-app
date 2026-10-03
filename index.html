@@ -10,9 +10,10 @@
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 <style>
-#map{height:300px;border-radius:16px;border:1px solid #333;overflow:hidden;margin:10px 0}
-.map-actions{display:flex;gap:8px}.map-actions .btn{margin:0}
-.route-info{display:flex;justify-content:space-between;gap:8px;margin-top:8px}.route-info div{flex:1;background:#111;border:1px solid #333;border-radius:10px;padding:10px;text-align:center}
+#map{height:330px;border-radius:18px;border:1px solid #333;overflow:hidden;margin:10px 0;background:#111}
+.map-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.map-actions .btn{margin:0}
+.map-modes{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}.map-modes button{background:#171717;color:#ddd;border:1px solid #333;border-radius:10px;padding:9px 4px;font-size:11px}.map-modes button.active{border-color:var(--gold);color:var(--gold)}
+.route-info{display:flex;justify-content:space-between;gap:8px;margin-top:8px}.route-info div{flex:1;background:#111;border:1px solid #333;border-radius:10px;padding:10px;text-align:center}.traffic-legend{display:flex;gap:7px;flex-wrap:wrap;font-size:11px;color:#bbb;margin:7px 0}.traffic-legend span{padding:4px 7px;border-radius:999px;background:#171717;border:1px solid #333}.map-note{font-size:11px;color:#888;line-height:1.35;margin-top:8px}
 </style>
 </head>
 <body>
@@ -114,13 +115,21 @@
   <h1 id="rideTitle">Corrida</h1>
   <div class="card">
     <div id="map"></div>
+    <div class="map-modes">
+      <button id="modeRoad" class="active" onclick="setMapMode('road')">🗺️ Normal</button>
+      <button id="modeSatellite" onclick="setMapMode('satellite')">🛰️ Satélite</button>
+      <button id="modeDark" onclick="setMapMode('dark')">🌙 Escuro</button>
+      <button id="modeTraffic" onclick="setMapMode('traffic')">🚦 Trânsito</button>
+    </div>
     <div class="map-actions">
       <button class="btn dark" onclick="locateMe()">📍 Minha localização</button>
-      <button class="btn outline" onclick="clearRoute()">Limpar</button>
+      <button class="btn outline" onclick="clearRoute()">Limpar rota</button>
     </div>
     <input id="rideDestination" class="input" placeholder="📍 Digite o destino">
     <button class="btn outline" onclick="findDestination()">Buscar destino no mapa</button>
+    <div class="traffic-legend"><span>🟢 fluxo livre</span><span>🟡 moderado</span><span>🔴 congestionado</span></div>
     <div id="mapMsg" class="small">Ative a localização para usar sua posição como origem.</div>
+    <div id="mapNote" class="map-note"></div>
     <div id="routeInfo" class="route-info" style="display:none">
       <div><span class="small">Distância</span><br><b id="distanceValue">—</b></div>
       <div><span class="small">Tempo</span><br><b id="timeValue">—</b></div>
@@ -310,31 +319,93 @@ function openRide(women){
 }
 
 
-function initMap(){
+let mapProvider = "leaflet";
+let googleMap = null, googleTraffic = null, googleDirections = null, googleRouteRenderer = null;
+let mapLayers = {}, currentMapMode = "road";
+
+async function loadGoogleMapsIfAvailable(){
+  try{
+    const cfg=await fetch(API+"/config/maps").then(r=>r.json());
+    if(!cfg.googleMapsApiKey) return false;
+    if(window.google?.maps) return true;
+    await new Promise((resolve,reject)=>{
+      const cb="dyabyGoogleReady";
+      window[cb]=()=>{delete window[cb];resolve()};
+      const script=document.createElement("script");
+      script.src="https://maps.googleapis.com/maps/api/js?key="+encodeURIComponent(cfg.googleMapsApiKey)+"&libraries=geometry&callback="+cb;
+      script.async=true;script.defer=true;script.onerror=reject;document.head.appendChild(script);
+    });
+    return !!window.google?.maps;
+  }catch{return false}
+}
+
+function initLeaflet(){
   if(!window.L) { mapMsg.textContent="Mapa ainda carregando. Tente novamente."; return; }
   if(map){ map.invalidateSize(); return; }
-  map=L.map("map").setView([-18.5789,-46.5180],13);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map);
+  map=L.map("map",{zoomControl:false}).setView([-18.5789,-46.5180],13);
+  L.control.zoom({position:"bottomright"}).addTo(map);
+  mapLayers.road=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"});
+  mapLayers.dark=L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{maxZoom:20,attribution:"© OpenStreetMap © CARTO"});
+  mapLayers.satellite=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Tiles © Esri"});
+  mapLayers.road.addTo(map);
   locateMe();
 }
 
-function locateMe(){
-  if(!navigator.geolocation){
-    mapMsg.textContent="Seu navegador não oferece localização.";
-    return;
+async function initMap(){
+  const hasGoogle=await loadGoogleMapsIfAvailable();
+  if(hasGoogle){
+    mapProvider="google";
+    googleMap=new google.maps.Map(document.getElementById("map"),{
+      center:{lat:-18.5789,lng:-46.5180},zoom:13,mapTypeId:"roadmap",fullscreenControl:false,streetViewControl:false,mapTypeControl:false,zoomControl:true,
+      styles:[]
+    });
+    googleTraffic=new google.maps.TrafficLayer();
+    googleDirections=new google.maps.DirectionsService();
+    googleRouteRenderer=new google.maps.DirectionsRenderer({map:googleMap,suppressMarkers:true,preserveViewport:false,polylineOptions:{strokeColor:"#ffc400",strokeWeight:6}});
+    mapMsg.textContent="Mapa Google ativo. Trânsito em tempo real disponível.";
+    mapNote.textContent="Trânsito real depende da disponibilidade dos dados do Google na região. Acidentes e radares não são inventados pelo app; uma camada específica só será exibida quando houver uma fonte licenciada.";
+    locateMe();
+  }else{
+    mapProvider="leaflet";
+    mapNote.textContent="Mapa gratuito ativo. Para trânsito real, o DYABY precisa de uma chave Google Maps configurada no Render.";
+    initLeaflet();
   }
+}
+
+function setMapMode(mode){
+  currentMapMode=mode;
+  ["road","satellite","dark","traffic"].forEach(x=>document.getElementById("mode"+x.charAt(0).toUpperCase()+x.slice(1))?.classList.toggle("active",x===mode));
+  if(mapProvider==="google" && googleMap){
+    if(mode==="satellite") googleMap.setMapTypeId("satellite");
+    else {googleMap.setMapTypeId("roadmap"); googleMap.setOptions({styles:mode==="dark"?[{elementType:"geometry",stylers:[{color:"#242f3e"}]},{elementType:"labels.text.fill",stylers:[{color:"#746855"}]},{elementType:"labels.text.stroke",stylers:[{color:"#242f3e"}]}]:[]});}
+    if(googleTraffic) googleTraffic.setMap(mode==="traffic"?googleMap:null);
+  }else if(map){
+    Object.values(mapLayers).forEach(l=>{if(map.hasLayer(l))map.removeLayer(l)});
+    const layer=mode==="satellite"?mapLayers.satellite:mode==="dark"?mapLayers.dark:mapLayers.road;
+    layer.addTo(map);
+    if(mode==="traffic") mapLayers.road.addTo(map);
+    map.invalidateSize();
+    mapMsg.textContent=mode==="traffic"?"Modo trânsito visual. Trânsito real requer Google Maps configurado.":"Estilo do mapa alterado.";
+  }
+}
+
+function locateMe(){
+  if(!navigator.geolocation){ mapMsg.textContent="Seu navegador não oferece localização."; return; }
   mapMsg.textContent="Obtendo sua localização...";
   navigator.geolocation.getCurrentPosition(pos=>{
     originCoords=[pos.coords.latitude,pos.coords.longitude];
-    if(!map) initMap();
-    if(originMarker) originMarker.setLatLng(originCoords);
-    else originMarker=L.marker(originCoords).addTo(map).bindPopup("Você está aqui");
-    map.setView(originCoords,15);
+    if(mapProvider==="google" && googleMap){
+      const point={lat:originCoords[0],lng:originCoords[1]};
+      if(originMarker) originMarker.setPosition(point); else originMarker=new google.maps.Marker({position:point,map:googleMap,title:"Você está aqui",label:"📍"});
+      googleMap.setCenter(point);googleMap.setZoom(15);
+    }else{
+      if(!map) initLeaflet();
+      if(originMarker) originMarker.setLatLng(originCoords); else originMarker=L.marker(originCoords).addTo(map).bindPopup("Você está aqui");
+      map.setView(originCoords,15);
+    }
     mapMsg.textContent="Localização atual encontrada.";
     if(destinationCoords) drawRoute();
-  },err=>{
-    mapMsg.textContent="Permita a localização no navegador para usar o GPS.";
-  },{enableHighAccuracy:true,timeout:10000,maximumAge:30000});
+  },()=>{mapMsg.textContent="Permita a localização no navegador para usar o GPS."},{enableHighAccuracy:true,timeout:10000,maximumAge:30000});
 }
 
 async function findDestination(){
@@ -346,44 +417,53 @@ async function findDestination(){
     const data=await r.json();
     if(!data.length){mapMsg.textContent="Destino não encontrado.";return}
     destinationCoords=[Number(data[0].lat),Number(data[0].lon)];
-    if(!map) initMap();
-    if(destinationMarker) destinationMarker.setLatLng(destinationCoords);
-    else destinationMarker=L.marker(destinationCoords).addTo(map).bindPopup("Destino");
-    map.setView(destinationCoords,14);
-    mapMsg.textContent="Destino encontrado. Calculando rota...";
-    if(originCoords) await drawRoute();
-    else mapMsg.textContent="Destino encontrado. Agora toque em 'Minha localização'.";
-  }catch(e){
-    mapMsg.textContent="Não foi possível localizar o destino agora.";
-  }
+    if(mapProvider==="google" && googleMap){
+      const point={lat:destinationCoords[0],lng:destinationCoords[1]};
+      if(destinationMarker) destinationMarker.setPosition(point); else destinationMarker=new google.maps.Marker({position:point,map:googleMap,title:"Destino",label:"🏁"});
+      googleMap.setCenter(point);
+    }else{
+      if(!map) initLeaflet();
+      if(destinationMarker) destinationMarker.setLatLng(destinationCoords); else destinationMarker=L.marker(destinationCoords).addTo(map).bindPopup("Destino");
+      map.setView(destinationCoords,14);
+    }
+    mapMsg.textContent="Destino encontrado. Calculando a rota mais rápida...";
+    if(originCoords) await drawRoute(); else mapMsg.textContent="Destino encontrado. Agora toque em 'Minha localização'.";
+  }catch(e){mapMsg.textContent="Não foi possível localizar o destino agora.";}
 }
 
 async function drawRoute(){
   if(!originCoords || !destinationCoords) return;
+  if(mapProvider==="google" && googleDirections){
+    return new Promise(resolve=>{
+      googleDirections.route({origin:{lat:originCoords[0],lng:originCoords[1]},destination:{lat:destinationCoords[0],lng:destinationCoords[1]},travelMode:google.maps.TravelMode.DRIVING,provideRouteAlternatives:true,drivingOptions:{departureTime:new Date(),trafficModel:"bestguess"}},(result,status)=>{
+        if(status!=="OK"||!result?.routes?.length){mapMsg.textContent="Rota não encontrada.";resolve();return;}
+        googleRouteRenderer.setDirections(result);
+        const leg=result.routes[0].legs[0];
+        const meters=leg.distance?.value||0;
+        const duration=leg.duration_in_traffic?.value||leg.duration?.value||0;
+        const km=meters/1000, mins=Math.max(1,Math.round(duration/60));
+        const fare=Math.max(5,Math.round(km));
+        distanceValue.textContent=km.toFixed(1).replace(".",",")+" km";
+        timeValue.textContent=mins+" min";
+        fareValue.textContent="R$ "+fare.toFixed(2).replace(".",",");
+        ridePrice.value=String(Math.max(10,fare));routeInfo.style.display="flex";
+        mapMsg.textContent=result.routes.length>1?"Rota mais rápida calculada. Há alternativas disponíveis.":"Rota mais rápida calculada com previsão de trânsito.";
+        resolve();
+      });
+    });
+  }
   try{
-    const url="https://router.project-osrm.org/route/v1/driving/"+
-      originCoords[1]+","+originCoords[0]+";"+
-      destinationCoords[1]+","+destinationCoords[0]+
-      "?overview=full&geometries=geojson";
-    const r=await fetch(url);
-    const data=await r.json();
+    const url="https://router.project-osrm.org/route/v1/driving/"+originCoords[1]+","+originCoords[0]+";"+destinationCoords[1]+","+destinationCoords[0]+"?overview=full&alternatives=true&geometries=geojson";
+    const r=await fetch(url),data=await r.json();
     if(!data.routes?.length){mapMsg.textContent="Rota não encontrada.";return}
     const route=data.routes[0];
     if(routeLayer) routeLayer.remove();
-    routeLayer=L.geoJSON(route.geometry,{style:{weight:6}}).addTo(map);
+    routeLayer=L.geoJSON(route.geometry,{style:{weight:7}}).addTo(map);
     map.fitBounds(routeLayer.getBounds(),{padding:[20,20]});
-    const km=route.distance/1000;
-    const mins=Math.round(route.duration/60);
-    const fare=Math.max(5,Math.round(km*1.0));
-    distanceValue.textContent=km.toFixed(1).replace(".",",")+" km";
-    timeValue.textContent=mins+" min";
-    fareValue.textContent="R$ "+fare.toFixed(2).replace(".",",");
-    ridePrice.value=String(Math.max(10,fare));
-    routeInfo.style.display="flex";
-    mapMsg.textContent="Rota calculada.";
-  }catch(e){
-    mapMsg.textContent="Não foi possível calcular a rota.";
-  }
+    const km=route.distance/1000,mins=Math.round(route.duration/60),fare=Math.max(5,Math.round(km));
+    distanceValue.textContent=km.toFixed(1).replace(".",",")+" km";timeValue.textContent=mins+" min";fareValue.textContent="R$ "+fare.toFixed(2).replace(".",",");ridePrice.value=String(Math.max(10,fare));routeInfo.style.display="flex";
+    mapMsg.textContent=data.routes.length>1?"Rota mais rápida calculada. Há alternativas no serviço de rota.":"Rota calculada.";
+  }catch(e){mapMsg.textContent="Não foi possível calcular a rota.";}
 }
 
 function clearRoute(){

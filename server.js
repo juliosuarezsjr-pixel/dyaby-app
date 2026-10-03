@@ -640,6 +640,11 @@ app.post("/api/admin/drivers/:id/reject", adminAuth, async (req, res) => {
   res.json({ driver: result.rows[0] });
 });
 
+// Configuração pública do mapa. A chave Google deve ser restrita por domínio/app no Google Cloud.
+app.get("/api/config/maps", (req, res) => {
+  res.json({ googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || "" });
+});
+
 // Frontend
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
