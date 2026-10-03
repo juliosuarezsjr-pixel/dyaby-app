@@ -1,27 +1,30 @@
-DYABY V2.8 — CORREÇÃO DO FLUXO DA CORRIDA
+DYABY V2.9 — CORREÇÃO DE CORRIDAS E ENCOMENDAS
 
-Esta versão mantém a regra de preço:
-- até 1 km: R$ 5,00
-- acima de 1 km: cálculo por distância
+1. Suba estes arquivos para a branch main do GitHub:
+   - index.html
+   - server.js
+   - package.json
+   - INSTRUCOES.txt
 
-Correções principais:
-1. Cliente vê imediatamente a tela azul "CORRIDA SOLICITADA" quando a corrida é criada.
-2. O cliente não depende de uma segunda chamada /rides/:id para mostrar a corrida.
-3. Depois da solicitação, o cliente consulta a corrida ativa automaticamente a cada 2,5 segundos.
-4. Quando o motorista aceita, o cliente atualiza automaticamente e mostra "MOTORISTA ACEITOU".
-5. Se a primeira resposta do servidor falhar depois que a corrida foi criada, o cliente tenta recuperar a corrida ativa por até 9 segundos, evitando duplicidade.
-6. Erros temporários de rede durante o acompanhamento não tiram o cliente da corrida nem mostram "Failed to fetch".
-7. Ao reabrir o aplicativo, uma corrida ativa é recuperada automaticamente.
-8. Motoristas continuam recebendo novas corridas automaticamente a cada 5 segundos.
-9. Corridas permanecem disponíveis por no máximo 4 minutos e desaparecem imediatamente após aceitação.
-10. Corridas aceitas deixam de aparecer para outros motoristas.
+2. O Render fará o deploy automaticamente.
 
-Arquivos para atualizar no GitHub:
-- index.html
-- server.js
-- package.json
+CORRIDAS:
+- Até 1 km: R$ 5,00.
+- Acima de 1 km: cálculo pela distância.
+- Corrida aparece para motoristas imediatamente e fica disponível no máximo 4 minutos.
+- Motorista aceita: sai da lista dos outros motoristas.
+- Cliente acompanha automaticamente o status.
+- Se o passageiro cancelar depois de 3 minutos e já houver motorista aceitado, registra R$ 5,00 de compensação para o motorista.
+- A cancelamento é sincronizado automaticamente no painel do motorista.
 
-Depois do commit, aguarde o deploy do Render e teste:
-Cliente → Pedir agora → deve aparecer "CORRIDA SOLICITADA".
-Motorista → Corridas → aceitar.
-Cliente → deve mudar sozinho para "MOTORISTA ACEITOU".
+ENCOMENDAS:
+- Cliente informa o tipo da encomenda e descrição.
+- Cliente pode usar a localização automática para o ponto de coleta.
+- Cliente informa o destino; o sistema calcula distância e taxa.
+- Botão “Buscar entregador” cria a encomenda e a coloca imediatamente para os entregadores.
+- Entregador vê tipo, descrição, localização de coleta, destino, distância e valor.
+- O cliente acompanha quando um entregador aceita.
+
+AMBIENTE DO RENDER:
+DATABASE_URL e JWT_SECRET continuam obrigatórios.
+ADMIN_EMAIL e ADMIN_PASSWORD são necessários para /admin.
