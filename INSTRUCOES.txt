@@ -1,20 +1,22 @@
-DYABY V2.3 - CORREÇÃO DE ERROS 502
+DYABY V2.5 - CORREÇÃO DE DISPONIBILIDADE E ADMIN
 
-Arquivos: server.js, index.html, package.json
+Principais correções:
+- Corridas disponíveis agora usam filtro de corrida ainda em searching, sem motorista e nunca mostram a própria corrida do motorista.
+- Endpoints de corridas ativas/disponíveis usam tratamento seguro de erros assíncronos para evitar queda do processo Node quando PostgreSQL falhar.
+- Painel administrativo: os indicadores são calculados de forma independente; se uma consulta opcional falhar, o restante do painel continua funcionando.
+- Mantida a sessão administrativa separada.
+- Mantida a lógica de aprovação de motoristas/comércios.
 
-Nesta versão:
-- endpoints administrativos passam por tratamento de erros assíncronos;
-- erros de banco não derrubam o processo durante uma chamada administrativa;
-- solicitação de corrida também recebe tratamento de erro;
-- o frontend mantém a mensagem HTTP real para diagnóstico;
-- se o token administrativo expirar, o painel volta ao login.
+Deploy:
+1. Substitua server.js, index.html, package.json e INSTRUCOES.txt no GitHub.
+2. Aguarde o Render terminar o deploy.
+3. Faça login novamente no /admin.
+4. Teste primeiro Motoristas e Taxas; depois teste Corridas como motorista.
 
-Depois de enviar os arquivos para o GitHub/main e o Render concluir o deploy, faça um novo login em /admin.
-
-Variáveis necessárias no Render:
+Variáveis do Render:
 DATABASE_URL
 JWT_SECRET
 ADMIN_EMAIL
 ADMIN_PASSWORD
 
-Não coloque esses valores no GitHub nem envie os segredos pelo chat.
+Não apague o banco de dados.
