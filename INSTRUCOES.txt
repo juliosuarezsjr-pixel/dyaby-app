@@ -1,4 +1,4 @@
-DYABY V2.5 - CORREÇÃO DE DISPONIBILIDADE E ADMIN
+DYABY V2.6 - CORREÇÃO DE DISPONIBILIDADE E ADMIN
 
 Principais correções:
 - Corridas disponíveis agora usam filtro de corrida ainda em searching, sem motorista e nunca mostram a própria corrida do motorista.
@@ -20,3 +20,6 @@ ADMIN_EMAIL
 ADMIN_PASSWORD
 
 Não apague o banco de dados.
+
+
+V2.6: corrida <= 1 km custa R$5; corridas disponíveis expiram da lista após 15 minutos se ainda não foram aceitas; backend com timeouts de PostgreSQL e logs de erros de processo.
