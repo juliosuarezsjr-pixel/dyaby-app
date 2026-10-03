@@ -1,30 +1,20 @@
-DYABY V3.0 — CORREÇÃO COMPLETA DE ENCOMENDAS
+DYABY V3.1 — SINCRONIZAÇÃO DE ENCOMENDAS
 
-Arquivos para subir na branch main do GitHub:
-- index.html
-- server.js
-- package.json
-- INSTRUCOES.txt
+1. Suba estes 4 arquivos para a branch main:
+   - index.html
+   - server.js
+   - package.json
+   - INSTRUCOES.txt
 
-O Render fará o deploy automaticamente.
+2. O Render fará o deploy automaticamente.
 
-ENCOMENDAS:
-- “Buscar entregador” cria uma encomenda persistida no PostgreSQL.
-- A encomenda aparece para entregadores aprovados e com serviço de entrega.
-- O cliente acompanha: buscando entregador → entregador aceitou → em entrega → concluída.
-- Cliente pode cancelar enquanto a entrega estiver ativa.
-- Entregador pode cancelar uma entrega ativa.
-- A coleta exige código de 4 dígitos + pelo menos 1 foto (até 3).
-- A entrega exige código de 4 dígitos + pelo menos 1 foto (até 3).
-- Os códigos são gerados no servidor e ficam vinculados à encomenda.
-- Depois da entrega, o cliente pode avaliar o entregador de 1 a 5 estrelas.
-- A taxa da plataforma e o repasse do entregador são calculados no fechamento.
-- O fluxo antigo de pickup/deliver não pode finalizar encomendas do tipo package sem validação.
+CORREÇÃO DESTA VERSÃO:
+- O cliente recupera automaticamente uma encomenda ativa mesmo após recarregar a página.
+- O cliente vê BUSCANDO ENTREGADOR e, quando aceitar, mostra ENTREGADOR ACEITOU + nome do entregador.
+- O motorista atualiza a lista de encomendas automaticamente a cada 2 segundos.
+- O motorista recupera automaticamente sua encomenda ativa.
+- Cliente e motorista usam o mesmo status salvo no PostgreSQL.
+- Cancelamento da encomenda é sincronizado entre cliente e motorista.
+- A encomenda continua usando as etapas de coleta e entrega existentes.
 
-CORRIDAS:
-- Mantido o fluxo existente de corrida, radar, cancelamento e compensação.
-
-BANCO:
-- A inicialização cria automaticamente os campos de validação de encomendas.
-- DATABASE_URL e JWT_SECRET continuam obrigatórios.
-- ADMIN_EMAIL e ADMIN_PASSWORD continuam necessários para /admin.
+NÃO remova as telas de validação já existentes.
