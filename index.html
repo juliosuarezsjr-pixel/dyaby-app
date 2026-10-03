@@ -357,7 +357,7 @@ async function rideAction(action){
     currentRide=data.ride;
     driverActive.innerHTML="<p>Status: <b>"+currentRide.status+"</b></p>"+
       "<p>"+escapeHtml(currentRide.destination)+"</p>"+
-      (currentRide.status==="started"?'<button class="btn primary" onclick="rideAction(\\'finish\\')">Finalizar corrida</button>':"");
+      (currentRide.status==="started"?`<button class="btn primary" onclick="rideAction('finish')">Finalizar corrida</button>`:"");
   }catch(e){alert(e.message)}
 }
 
