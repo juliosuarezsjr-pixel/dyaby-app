@@ -1,32 +1,20 @@
-DYABY V2.1 — versão mestre
+DYABY V2.3 - CORREÇÃO DE ERROS 502
 
-Substitua estes 4 arquivos no GitHub:
-- index.html
-- server.js
-- package.json
-- INSTRUCOES.txt
+Arquivos: server.js, index.html, package.json
 
-Depois faça Commit changes e aguarde o deploy do Render.
+Nesta versão:
+- endpoints administrativos passam por tratamento de erros assíncronos;
+- erros de banco não derrubam o processo durante uma chamada administrativa;
+- solicitação de corrida também recebe tratamento de erro;
+- o frontend mantém a mensagem HTTP real para diagnóstico;
+- se o token administrativo expirar, o painel volta ao login.
 
-Confirmação do deploy:
-Abra https://dyaby-app.onrender.com/api/version
-Deve aparecer version: 2.1.0-master.
+Depois de enviar os arquivos para o GitHub/main e o Render concluir o deploy, faça um novo login em /admin.
 
-Variáveis obrigatórias no Render:
+Variáveis necessárias no Render:
 DATABASE_URL
 JWT_SECRET
 ADMIN_EMAIL
 ADMIN_PASSWORD
 
-Para WhatsApp real, configure também:
-TWILIO_ACCOUNT_SID
-TWILIO_AUTH_TOKEN
-TWILIO_VERIFY_SERVICE_SID
-
-Nunca coloque senhas ou chaves privadas no GitHub.
-
-Estrutura:
-Cliente = corridas, encomendas, comida, bolos/doces, corrida para mulheres e radar.
-Motorista/Entregador = corridas, entregas, ganhos e perfil.
-Comércio = somente produtos, pedidos, vendas e perfil do negócio.
-Admin = acesso separado em /admin.
+Não coloque esses valores no GitHub nem envie os segredos pelo chat.
