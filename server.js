@@ -537,11 +537,16 @@ app.post("/api/rides/:id/cancel", auth, async (req, res) => {
   if (!current.rowCount) return res.status(404).json({ error: "Corrida não encontrada." });
 
   const ride = current.rows[0];
-  const isPassenger = ride.passenger_id === req.user.id;
-  const isDriver = ride.driver_id === req.user.id;
+  // Normalize IDs because JWT/database clients can represent the same integer
+  // as a number or string. This prevents a valid owner from receiving 403.
+  const userId = Number(req.user.id);
+  const passengerId = Number(ride.passenger_id);
+  const driverId = ride.driver_id == null ? null : Number(ride.driver_id);
+  const isPassenger = passengerId === userId;
+  const isDriver = driverId === userId;
 
   if (!isPassenger && !isDriver)
-    return res.status(403).json({ error: "Acesso negado." });
+    return res.status(403).json({ error: "Acesso negado: esta corrida não pertence à sua conta." });
 
   if (!["searching","accepted","arrived","started"].includes(ride.status))
     return res.status(409).json({ error: "Essa corrida não pode mais ser cancelada." });
@@ -560,9 +565,14 @@ app.post("/api/rides/:id/cancel", auth, async (req, res) => {
          cancelled_by=$1,
          driver_compensation=$2
      WHERE id=$3
+       AND status IN ('searching','accepted','arrived','started')
+       AND (passenger_id=$4 OR driver_id=$4)
      RETURNING *`,
-    [isPassenger ? "passenger" : "driver", compensation, req.params.id]
+    [isPassenger ? "passenger" : "driver", compensation, req.params.id, userId]
   );
+
+  if (!result.rowCount)
+    return res.status(409).json({ error: "A corrida mudou de estado. Atualize e tente novamente." });
 
   res.json({
     ride: result.rows[0],

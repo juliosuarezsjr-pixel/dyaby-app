@@ -506,10 +506,16 @@ async function renderTrip(){
 
 async function cancelRide(){
   if(!currentRide)return;
+  if(currentRide.status==="cancelled"||currentRide.status==="finished")return;
+  if(!confirm("Deseja cancelar esta corrida?"))return;
   try{
     const data=await api("/rides/"+currentRide.id+"/cancel",{method:"POST",body:"{}"});
-    alert(data.message);
-    show("home");
+    currentRide=data.ride;
+    tripCard.innerHTML=
+      "<div class='status'><b>cancelled</b></div>"+
+      "<p>Corrida cancelada.</p>"+
+      (Number(data.compensation||0)>0?"<p class='ok'>Compensação registrada para o motorista: <b>R$ 5,00</b>.</p>":"");
+    setTimeout(()=>show("home"),1200);
   }catch(e){alert(e.message)}
 }
 
@@ -529,11 +535,31 @@ async function acceptRide(id){
   try{
     const data=await api("/rides/"+id+"/accept",{method:"POST",body:"{}"});
     currentRide=data.ride;
-    driverActive.innerHTML="<p>Corrida #"+id+" aceita.</p>"+
-      "<p>"+escapeHtml(currentRide.destination)+"</p>"+
-      "<button class='btn dark' onclick='rideAction(\"arrive\")'>Cheguei</button>"+
-      "<button class='btn primary' onclick='rideAction(\"start\")'>Iniciar</button>";
+    renderDriverActive();
     loadAvailable();
+  }catch(e){alert(e.message)}
+}
+
+function renderDriverActive(){
+  if(!currentRide){driverActive.innerHTML="<p class='muted'>Nenhuma corrida.</p>";return}
+  const status=currentRide.status;
+  let actions="";
+  if(status==="accepted") actions+="<button class='btn dark' onclick='rideAction(\"arrive\")'>Cheguei</button>";
+  if(status==="accepted"||status==="arrived") actions+="<button class='btn primary' onclick='rideAction(\"start\")'>Iniciar</button>";
+  if(status==="started") actions+="<button class='btn primary' onclick='rideAction(\"finish\")'>Finalizar corrida</button>";
+  if(["accepted","arrived","started"].includes(status)) actions+="<button class='btn outline' onclick='cancelDriverRide()'>Cancelar</button>";
+  driverActive.innerHTML="<p>Status: <b>"+escapeHtml(status)+"</b></p>"+
+    "<p>📍 "+escapeHtml(currentRide.destination)+"</p>"+actions;
+}
+
+async function cancelDriverRide(){
+  if(!currentRide||!confirm("Deseja cancelar esta corrida?"))return;
+  try{
+    const data=await api("/rides/"+currentRide.id+"/cancel",{method:"POST",body:"{}"});
+    currentRide=null;
+    renderDriverActive();
+    loadAvailable();
+    alert(data.message);
   }catch(e){alert(e.message)}
 }
 
@@ -542,9 +568,8 @@ async function rideAction(action){
   try{
     const data=await api("/rides/"+currentRide.id+"/"+action,{method:"POST",body:"{}"});
     currentRide=data.ride;
-    driverActive.innerHTML="<p>Status: <b>"+currentRide.status+"</b></p>"+
-      "<p>"+escapeHtml(currentRide.destination)+"</p>"+
-      (currentRide.status==="started"?`<button class="btn primary" onclick="rideAction('finish')">Finalizar corrida</button>`:"");
+    renderDriverActive();
+    if(currentRide.status==="finished") loadAvailable();
   }catch(e){alert(e.message)}
 }
 
