@@ -1,0 +1,4 @@
+DYABY V9 — visual por categoria.
+Mantém backend e funcionalidades da V8.
+Categorias com artes do mascote: Moto, Entrega, Comida, Bolos e doces, Só mulheres e Comércio.
+Faça deploy do conteúdo desta pasta mantendo server.js e package.json.
