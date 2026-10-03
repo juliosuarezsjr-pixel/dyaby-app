@@ -8,6 +8,12 @@
 :root{--bg:#070707;--card:#151515;--gold:#ffc400;--pink:#ff4f9a;--white:#fff;--muted:#aaa;--line:#292929;--green:#36d98a;--red:#ff5d5d}
 *{box-sizing:border-box}body{margin:0;background:#000;color:#fff;font-family:Arial,Helvetica,sans-serif}.app{max-width:430px;min-height:100vh;margin:auto;background:var(--bg);overflow:hidden}.screen{display:none;min-height:100vh;padding:22px 18px 100px}.screen.active{display:block}.row{display:flex;align-items:center;justify-content:space-between;gap:12px}.small{color:var(--muted);font-size:13px}.muted{color:var(--muted)}h1{font-size:28px;margin:6px 0 12px}h2{font-size:20px}.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin:12px 0}.input,.select{width:100%;padding:14px;border-radius:12px;border:1px solid #333;background:#0e0e0e;color:#fff;margin:6px 0 10px;font-size:16px}.btn{border:0;border-radius:13px;padding:14px 16px;width:100%;font-weight:700;font-size:15px;margin:5px 0;cursor:pointer}.primary{background:var(--gold);color:#000}.dark{background:#262626;color:#fff}.pink{background:var(--pink);color:#fff}.outline{background:transparent;color:#fff;border:1px solid #555}.badge{background:#222;border:1px solid #444;border-radius:999px;padding:8px 10px;font-size:12px}.brand{font-size:18px;color:var(--gold);font-weight:800}.topbrand{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}.topbrand b{font-size:30px;color:var(--gold)}.message{min-height:22px;padding:8px 0;color:#ff7b7b;font-size:14px}.price{font-size:20px;font-weight:800;color:var(--gold)}.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(430px,100%);display:flex;background:#111;border-top:1px solid #333;padding:8px;z-index:10}.nav button{flex:1;background:none;border:0;color:#aaa;padding:7px;font-size:12px}.nav b{display:block;color:#fff;font-size:20px}.hero{padding:18px;border-radius:22px;background:linear-gradient(145deg,#191919,#0b0b0b);border:1px solid #292929;min-height:190px;display:flex;flex-direction:column;justify-content:flex-end}.mascot{font-size:72px;margin-bottom:8px}.service{min-height:90px}.status{padding:10px;border-radius:10px;background:#111;border:1px solid #333}.ok{color:var(--green)}.danger{color:var(--red)}
 </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<style>
+#map{height:300px;border-radius:16px;border:1px solid #333;overflow:hidden;margin:10px 0}
+.map-actions{display:flex;gap:8px}.map-actions .btn{margin:0}
+.route-info{display:flex;justify-content:space-between;gap:8px;margin-top:8px}.route-info div{flex:1;background:#111;border:1px solid #333;border-radius:10px;padding:10px;text-align:center}
+</style>
 </head>
 <body>
 <div class="app">
@@ -107,7 +113,19 @@
 <section id="ride" class="screen">
   <h1 id="rideTitle">Corrida</h1>
   <div class="card">
-    <input id="rideDestination" class="input" placeholder="📍 Destino">
+    <div id="map"></div>
+    <div class="map-actions">
+      <button class="btn dark" onclick="locateMe()">📍 Minha localização</button>
+      <button class="btn outline" onclick="clearRoute()">Limpar</button>
+    </div>
+    <input id="rideDestination" class="input" placeholder="📍 Digite o destino">
+    <button class="btn outline" onclick="findDestination()">Buscar destino no mapa</button>
+    <div id="mapMsg" class="small">Ative a localização para usar sua posição como origem.</div>
+    <div id="routeInfo" class="route-info" style="display:none">
+      <div><span class="small">Distância</span><br><b id="distanceValue">—</b></div>
+      <div><span class="small">Tempo</span><br><b id="timeValue">—</b></div>
+      <div><span class="small">Estimativa</span><br><b id="fareValue">—</b></div>
+    </div>
     <select id="ridePrice" class="select">
       <option value="10">Moto — R$ 10,00</option>
       <option value="18">Moto Noite — R$ 18,00</option>
@@ -178,12 +196,15 @@
 </nav>
 </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script>
 const API = "/api";
 let token = localStorage.getItem("dyaby_token");
 let currentUser = null;
 let currentRide = null;
 let womenRide = false;
+let map = null, originMarker = null, destinationMarker = null, routeLayer = null;
+let originCoords = null, destinationCoords = null;
 
 function show(id){
   document.querySelectorAll(".screen").forEach(x=>x.classList.remove("active"));
@@ -285,6 +306,92 @@ function openRide(women){
   womenNotice.style.display=women?"block":"none";
   rideDestination.value=homeDestination.value||"";
   show("ride");
+  setTimeout(initMap,120);
+}
+
+
+function initMap(){
+  if(!window.L) { mapMsg.textContent="Mapa ainda carregando. Tente novamente."; return; }
+  if(map){ map.invalidateSize(); return; }
+  map=L.map("map").setView([-18.5789,-46.5180],13);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map);
+  locateMe();
+}
+
+function locateMe(){
+  if(!navigator.geolocation){
+    mapMsg.textContent="Seu navegador não oferece localização.";
+    return;
+  }
+  mapMsg.textContent="Obtendo sua localização...";
+  navigator.geolocation.getCurrentPosition(pos=>{
+    originCoords=[pos.coords.latitude,pos.coords.longitude];
+    if(!map) initMap();
+    if(originMarker) originMarker.setLatLng(originCoords);
+    else originMarker=L.marker(originCoords).addTo(map).bindPopup("Você está aqui");
+    map.setView(originCoords,15);
+    mapMsg.textContent="Localização atual encontrada.";
+    if(destinationCoords) drawRoute();
+  },err=>{
+    mapMsg.textContent="Permita a localização no navegador para usar o GPS.";
+  },{enableHighAccuracy:true,timeout:10000,maximumAge:30000});
+}
+
+async function findDestination(){
+  const text=rideDestination.value.trim();
+  if(!text){mapMsg.textContent="Digite um destino.";return}
+  mapMsg.textContent="Procurando destino...";
+  try{
+    const r=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q="+encodeURIComponent(text));
+    const data=await r.json();
+    if(!data.length){mapMsg.textContent="Destino não encontrado.";return}
+    destinationCoords=[Number(data[0].lat),Number(data[0].lon)];
+    if(!map) initMap();
+    if(destinationMarker) destinationMarker.setLatLng(destinationCoords);
+    else destinationMarker=L.marker(destinationCoords).addTo(map).bindPopup("Destino");
+    map.setView(destinationCoords,14);
+    mapMsg.textContent="Destino encontrado. Calculando rota...";
+    if(originCoords) await drawRoute();
+    else mapMsg.textContent="Destino encontrado. Agora toque em 'Minha localização'.";
+  }catch(e){
+    mapMsg.textContent="Não foi possível localizar o destino agora.";
+  }
+}
+
+async function drawRoute(){
+  if(!originCoords || !destinationCoords) return;
+  try{
+    const url="https://router.project-osrm.org/route/v1/driving/"+
+      originCoords[1]+","+originCoords[0]+";"+
+      destinationCoords[1]+","+destinationCoords[0]+
+      "?overview=full&geometries=geojson";
+    const r=await fetch(url);
+    const data=await r.json();
+    if(!data.routes?.length){mapMsg.textContent="Rota não encontrada.";return}
+    const route=data.routes[0];
+    if(routeLayer) routeLayer.remove();
+    routeLayer=L.geoJSON(route.geometry,{style:{weight:6}}).addTo(map);
+    map.fitBounds(routeLayer.getBounds(),{padding:[20,20]});
+    const km=route.distance/1000;
+    const mins=Math.round(route.duration/60);
+    const fare=Math.max(5,Math.round(km*1.0));
+    distanceValue.textContent=km.toFixed(1).replace(".",",")+" km";
+    timeValue.textContent=mins+" min";
+    fareValue.textContent="R$ "+fare.toFixed(2).replace(".",",");
+    ridePrice.value=String(Math.max(10,fare));
+    routeInfo.style.display="flex";
+    mapMsg.textContent="Rota calculada.";
+  }catch(e){
+    mapMsg.textContent="Não foi possível calcular a rota.";
+  }
+}
+
+function clearRoute(){
+  destinationCoords=null;
+  if(destinationMarker){destinationMarker.remove();destinationMarker=null}
+  if(routeLayer){routeLayer.remove();routeLayer=null}
+  routeInfo.style.display="none";
+  mapMsg.textContent="Destino removido.";
 }
 
 async function requestRide(){
@@ -378,7 +485,24 @@ function escapeHtml(s){
   return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
 }
 
-window.addEventListener("load",loadMe);
+let pollTimer=null;
+function startPolling(){
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer=setInterval(async()=>{
+    if(!currentUser) return;
+    if(currentUser.role==="driver" && document.getElementById("driverApproved").style.display!=="none"){
+      loadAvailable();
+    }
+    if(currentUser.role==="passenger" && currentRide){
+      try{
+        const data=await api("/rides/"+currentRide.id);
+        currentRide=data.ride;
+        renderTrip();
+      }catch{}
+    }
+  },5000);
+}
+window.addEventListener("load",()=>{loadMe().then(startPolling)});
 </script>
 </body>
 </html>
