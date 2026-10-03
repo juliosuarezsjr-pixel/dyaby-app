@@ -6,7 +6,7 @@
 <title>DYABY — Mobilidade que aproxima.</title>
 <style>
 :root{--bg:#070707;--card:#151515;--gold:#ffc400;--pink:#ff4f9a;--white:#fff;--muted:#aaa;--line:#292929;--green:#36d98a;--red:#ff5d5d}
-*{box-sizing:border-box}body{margin:0;background:#000;color:#fff;font-family:Arial,Helvetica,sans-serif}.app{max-width:430px;min-height:100vh;margin:auto;background:var(--bg);overflow:hidden}.screen{display:none;min-height:100vh;padding:22px 18px 100px}.screen.active{display:block}.row{display:flex;align-items:center;justify-content:space-between;gap:12px}.small{color:var(--muted);font-size:13px}.muted{color:var(--muted)}h1{font-size:28px;margin:6px 0 12px}h2{font-size:20px}.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin:12px 0}.input,.select{width:100%;padding:14px;border-radius:12px;border:1px solid #333;background:#0e0e0e;color:#fff;margin:6px 0 10px;font-size:16px}.btn{border:0;border-radius:13px;padding:14px 16px;width:100%;font-weight:700;font-size:15px;margin:5px 0;cursor:pointer}.primary{background:var(--gold);color:#000}.dark{background:#262626;color:#fff}.pink{background:var(--pink);color:#fff}.outline{background:transparent;color:#fff;border:1px solid #555}.badge{background:#222;border:1px solid #444;border-radius:999px;padding:8px 10px;font-size:12px}.price{font-size:20px;font-weight:800;color:var(--gold)}.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(430px,100%);display:flex;background:#111;border-top:1px solid #333;padding:8px;z-index:10}.nav button{flex:1;background:none;border:0;color:#aaa;padding:7px;font-size:12px}.nav b{display:block;color:#fff;font-size:20px}.hero{padding:18px;border-radius:22px;background:linear-gradient(145deg,#191919,#0b0b0b);border:1px solid #292929;min-height:190px;display:flex;flex-direction:column;justify-content:flex-end}.mascot{font-size:72px;margin-bottom:8px}.service{min-height:90px}.status{padding:10px;border-radius:10px;background:#111;border:1px solid #333}.ok{color:var(--green)}.danger{color:var(--red)}
+*{box-sizing:border-box}body{margin:0;background:#000;color:#fff;font-family:Arial,Helvetica,sans-serif}.app{max-width:430px;min-height:100vh;margin:auto;background:var(--bg);overflow:hidden}.screen{display:none;min-height:100vh;padding:22px 18px 100px}.screen.active{display:block}.row{display:flex;align-items:center;justify-content:space-between;gap:12px}.small{color:var(--muted);font-size:13px}.muted{color:var(--muted)}h1{font-size:28px;margin:6px 0 12px}h2{font-size:20px}.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin:12px 0}.input,.select{width:100%;padding:14px;border-radius:12px;border:1px solid #333;background:#0e0e0e;color:#fff;margin:6px 0 10px;font-size:16px}.btn{border:0;border-radius:13px;padding:14px 16px;width:100%;font-weight:700;font-size:15px;margin:5px 0;cursor:pointer}.primary{background:var(--gold);color:#000}.dark{background:#262626;color:#fff}.pink{background:var(--pink);color:#fff}.outline{background:transparent;color:#fff;border:1px solid #555}.badge{background:#222;border:1px solid #444;border-radius:999px;padding:8px 10px;font-size:12px}.brand{font-size:18px;color:var(--gold);font-weight:800}.topbrand{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}.topbrand b{font-size:30px;color:var(--gold)}.message{min-height:22px;padding:8px 0;color:#ff7b7b;font-size:14px}.price{font-size:20px;font-weight:800;color:var(--gold)}.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(430px,100%);display:flex;background:#111;border-top:1px solid #333;padding:8px;z-index:10}.nav button{flex:1;background:none;border:0;color:#aaa;padding:7px;font-size:12px}.nav b{display:block;color:#fff;font-size:20px}.hero{padding:18px;border-radius:22px;background:linear-gradient(145deg,#191919,#0b0b0b);border:1px solid #292929;min-height:190px;display:flex;flex-direction:column;justify-content:flex-end}.mascot{font-size:72px;margin-bottom:8px}.service{min-height:90px}.status{padding:10px;border-radius:10px;background:#111;border:1px solid #333}.ok{color:var(--green)}.danger{color:var(--red)}
 </style>
 </head>
 <body>
@@ -15,7 +15,7 @@
 <section id="welcome" class="screen active">
   <div class="hero">
     <div class="mascot">🐶🏍️</div>
-    <div class="small">DYABY</div>
+    <div class="small brand">DYABY</div>
     <h1>Mobilidade que aproxima.</h1>
     <p class="muted">Corridas, entregas e serviços de moto.</p>
     <button class="btn primary" onclick="show('login')">Entrar</button>
@@ -24,46 +24,65 @@
 </section>
 
 <section id="login" class="screen">
-  <h1>Entrar</h1>
-  <input id="loginEmail" class="input" type="email" placeholder="E-mail">
-  <input id="loginPassword" class="input" type="password" placeholder="Senha">
-  <button class="btn primary" onclick="login()">Entrar</button>
-  <button class="btn outline" onclick="show('register')">Criar conta</button>
-  <div id="loginMsg" class="small"></div>
+  <div class="topbrand"><b>DYABY</b><span class="badge">👤 Passageiro</span></div>
+  <div class="small">Bem-vindo</div>
+  <h1>Entrar no DYABY</h1>
+  <p class="muted">Use seu e-mail para acessar sua conta.</p>
+  <div class="card">
+    <input id="loginEmail" class="input" type="email" autocomplete="email" placeholder="E-mail">
+    <input id="loginPassword" class="input" type="password" autocomplete="current-password" placeholder="Senha">
+    <button id="loginBtn" class="btn primary" onclick="login()">Entrar</button>
+    <div id="loginMsg" class="message"></div>
+  </div>
+  <div class="card">
+    <h2>Criar conta</h2>
+    <p class="muted">Ainda não tem uma conta?</p>
+    <button class="btn outline" onclick="show('register')">Criar minha conta</button>
+  </div>
+  <button class="btn dark" onclick="show('welcome')">Voltar</button>
 </section>
 
 <section id="register" class="screen">
+  <div class="topbrand"><b>DYABY</b><span class="badge">📝 Cadastro</span></div>
   <h1>Criar sua conta</h1>
-  <p class="muted">Passageiros fazem um cadastro simples. Motoristas e entregadores passam por análise.</p>
-  <select id="regRole" class="select" onchange="toggleDriverFields()">
-    <option value="passenger">Passageiro</option>
-    <option value="driver">Motorista / Entregador</option>
-  </select>
-  <input id="regName" class="input" placeholder="Nome completo">
-  <input id="regCpf" class="input" placeholder="CPF">
-  <input id="regPhone" class="input" placeholder="Telefone / WhatsApp">
-  <input id="regEmail" class="input" type="email" placeholder="E-mail">
-  <input id="regPassword" class="input" type="password" placeholder="Senha (mínimo 6 caracteres)">
-  <select id="regGender" class="select">
-    <option value="">Sexo (opcional)</option>
-    <option value="female">Feminino</option>
-    <option value="male">Masculino</option>
-    <option value="other">Outro</option>
-  </select>
+  <p class="muted">Cadastre-se para usar corridas, entregas e serviços.</p>
+  <div class="card">
+    <label class="small">Tipo de conta</label>
+    <select id="regRole" class="select" onchange="toggleDriverFields()">
+      <option value="passenger">👤 Passageiro</option>
+      <option value="driver">🏍️ Motorista / Entregador</option>
+    </select>
+
+    <input id="regName" class="input" autocomplete="name" placeholder="Nome completo">
+    <input id="regCpf" class="input" inputmode="numeric" placeholder="CPF">
+    <input id="regPhone" class="input" inputmode="tel" placeholder="Telefone / WhatsApp">
+    <input id="regEmail" class="input" type="email" autocomplete="email" placeholder="E-mail">
+    <input id="regPassword" class="input" type="password" autocomplete="new-password" placeholder="Senha (mínimo 6 caracteres)">
+
+    <select id="regGender" class="select">
+      <option value="">Sexo (opcional)</option>
+      <option value="female">Feminino</option>
+      <option value="male">Masculino</option>
+      <option value="other">Outro</option>
+    </select>
+  </div>
+
   <div id="driverFields" class="card" style="display:none">
-    <b>Dados do motorista / entregador</b>
+    <h2>🏍️ Dados do motorista</h2>
     <input id="regCnh" class="input" placeholder="CNH">
-    <input id="regPlate" class="input" placeholder="Placa">
+    <input id="regPlate" class="input" placeholder="Placa da moto">
     <input id="regVehicle" class="input" placeholder="Modelo da moto">
     <select id="regServiceMode" class="select">
-      <option value="all">👥 Passageiros e passageiras</option>
+      <option value="all">👥 Mulheres e demais passageiros</option>
       <option value="women_only">👩 Somente mulheres</option>
     </select>
-    <p class="small">A opção "Somente mulheres" exige cadastro como motorista do sexo feminino.</p>
+    <p class="small">O modo somente mulheres é destinado a motoristas mulheres.</p>
   </div>
-  <button class="btn primary" onclick="register()">Enviar cadastro</button>
-  <button class="btn outline" onclick="show('login')">Já tenho conta</button>
-  <div id="regMsg" class="small"></div>
+
+  <button id="registerBtn" class="btn primary" onclick="register()">Criar conta</button>
+  <div id="regMsg" class="message"></div>
+  <button class="btn outline" onclick="show('login')">Já tenho uma conta</button>
+  <button class="btn dark" onclick="show('welcome')">Voltar</button>
 </section>
 
 <section id="home" class="screen">
@@ -188,33 +207,49 @@ async function api(url, options={}){
 
 async function login(){
   const msg=document.getElementById("loginMsg");
+  const btn=document.getElementById("loginBtn");
+  if(btn.disabled) return;
+  btn.disabled=true; btn.style.opacity=".6";
   msg.textContent="Entrando...";
   try{
     const data=await api("/auth/login",{method:"POST",body:JSON.stringify({
-      email:loginEmail.value,password:loginPassword.value
+      email:loginEmail.value.trim(),password:loginPassword.value
     })});
     token=data.token; localStorage.setItem("dyaby_token",token);
-    await loadMe(); msg.textContent="";
-  }catch(e){msg.textContent=e.message}
+    await loadMe();
+  }catch(e){
+    msg.textContent=e.message==="Erro 429"?"Muitas tentativas. Aguarde alguns segundos e tente novamente.":e.message;
+  }finally{
+    btn.disabled=false; btn.style.opacity="1";
+  }
 }
 
 function toggleDriverFields(){
-  driverFields.style.display=regRole.value==="driver"?"block":"none";
+  document.getElementById("driverFields").style.display=document.getElementById("regRole").value==="driver"?"block":"none";
 }
 
 async function register(){
   const msg=document.getElementById("regMsg");
-  msg.textContent="Enviando...";
+  const btn=document.getElementById("registerBtn");
+  if(btn.disabled) return;
+  btn.disabled=true; btn.style.opacity=".6";
+  msg.textContent="Criando sua conta...";
   try{
     const data=await api("/auth/register",{method:"POST",body:JSON.stringify({
-      role:regRole.value,name:regName.value,cpf:regCpf.value,phone:regPhone.value,
-      email:regEmail.value,password:regPassword.value,gender:regGender.value,
-      serviceMode:regServiceMode.value,cnh:regCnh?.value,plate:regPlate?.value,vehicleModel:regVehicle?.value
+      role:document.getElementById("regRole").value,name:regName.value.trim(),cpf:regCpf.value.trim(),phone:regPhone.value.trim(),
+      email:regEmail.value.trim(),password:regPassword.value,gender:document.getElementById("regGender").value,
+      serviceMode:document.getElementById("regServiceMode").value,cnh:document.getElementById("regCnh")?.value,
+      plate:document.getElementById("regPlate")?.value,
+      vehicleModel:document.getElementById("regVehicle")?.value
     })});
     token=data.token; localStorage.setItem("dyaby_token",token);
     msg.textContent=data.message||"Cadastro criado.";
     await loadMe();
-  }catch(e){msg.textContent=e.message}
+  }catch(e){
+    msg.textContent=e.message==="Erro 429"?"Muitas tentativas. Aguarde alguns segundos e tente novamente.":e.message;
+  }finally{
+    btn.disabled=false; btn.style.opacity="1";
+  }
 }
 
 async function loadMe(){
