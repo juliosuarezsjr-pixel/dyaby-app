@@ -1,0 +1,4 @@
+DYABY V10 — imagens das categorias embutidas no index.html para evitar erro 404 de assets no Render.
+
+Perfis: Cliente, Entregador e Comércio.
+Não remover o index.html nem alterar as rotas/API.
