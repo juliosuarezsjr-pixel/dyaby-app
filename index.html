@@ -397,31 +397,37 @@ function renderTripCard(){
   if(currentRide.driver_name)stopRadar();
   if(['finished','cancelled'].includes(status))stopPassengerRidePolling();
 }
+const rideStatusRank={searching:1,accepted:2,arrived:3,started:4,finished:5,cancelled:6};
+let passengerRideRefreshInFlight=false;
+function applyPassengerRideUpdate(next){
+  if(!next||Number(next.id)!==Number(currentRide?.id))return false;
+  const oldRank=rideStatusRank[String(currentRide?.status||'searching')]||0;
+  const newRank=rideStatusRank[String(next.status||'searching')]||0;
+  // Nunca deixe uma resposta antiga voltar o cliente de accepted para searching.
+  if(newRank<oldRank)return false;
+  currentRide=next;
+  renderTripCard();
+  if(['accepted','arrived','started'].includes(String(currentRide.status))) stopRadar();
+  return true;
+}
 async function refreshPassengerRide(){
-  if(!currentRide?.id)return false;
+  if(!currentRide?.id||passengerRideRefreshInFlight)return false;
+  passengerRideRefreshInFlight=true;
   const rideId=Number(currentRide.id);
-  // Consulta direta primeiro e, sempre, confirma pela lista ativa. Isso evita
-  // que uma resposta atrasada deixe o cliente preso em “Procurando motorista”.
+  let updated=false;
   try{
-    const d=await api('/rides/'+rideId);
-    if(d?.ride && Number(d.ride.id)===rideId){
-      currentRide=d.ride;
-      renderTripCard();
-      if(['accepted','arrived','started'].includes(String(currentRide.status))) stopRadar();
-      return true;
-    }
-  }catch{}
-  try{
+    // Uma única consulta por vez evita respostas fora de ordem.
     const d=await api('/rides/active');
     const found=(d.rides||[]).find(r=>Number(r.id)===rideId);
-    if(found){
-      currentRide=found;
-      renderTripCard();
-      if(['accepted','arrived','started'].includes(String(currentRide.status))) stopRadar();
-      return true;
-    }
+    if(found)updated=applyPassengerRideUpdate(found)||updated;
   }catch{}
-  return false;
+  try{
+    // Confirmação direta, com a mesma proteção contra regressão de status.
+    const d=await api('/rides/'+rideId);
+    if(d?.ride && Number(d.ride.id)===rideId)updated=applyPassengerRideUpdate(d.ride)||updated;
+  }catch{}
+  passengerRideRefreshInFlight=false;
+  return updated;
 }
 async function recoverPassengerRide(destination,distance){
   for(let i=0;i<6;i++){
