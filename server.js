@@ -77,10 +77,12 @@ app.post('/api/rides',auth,asyncRoute(async(req,res)=>{if(req.user.role!=='passe
 app.get('/api/rides/active',auth,asyncRoute(async(req,res)=>{
   await q(`UPDATE rides SET status='cancelled',cancelled_at=NOW(),cancelled_by='system' WHERE status='searching' AND driver_id IS NULL AND created_at < NOW()-INTERVAL '4 minutes'`);
   const r=await q(`SELECT r.*,p.name passenger_name,p.profile_photo_path passenger_photo,d.name driver_name,d.profile_photo_path driver_photo,d.pix_key driver_pix_key,dp.latitude driver_latitude,dp.longitude driver_longitude,dp.vehicle_model driver_vehicle_model,dp.plate driver_plate FROM rides r JOIN users p ON p.id=r.passenger_id LEFT JOIN users d ON d.id=r.driver_id LEFT JOIN driver_profiles dp ON dp.user_id=r.driver_id WHERE (r.passenger_id=$1 OR r.driver_id=$1) AND (r.status IN ('searching','accepted','arrived','started') OR (r.status='finished' AND (r.payment_received_at IS NULL OR r.payment_method='pix') AND r.finished_at>NOW()-INTERVAL '30 minutes') OR (r.status='cancelled' AND r.cancelled_at>NOW()-INTERVAL '10 minutes')) ORDER BY r.created_at DESC`,[req.user.id]);
+  const rides=r.rows;
+  const safeRides=req.user.role==='passenger'?rides.map(x=>{const y={...x};delete y.platform_fee;delete y.driver_payout;delete y.driver_pix_key;return y;}):rides;
   res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');
   res.set('Pragma','no-cache');
   res.set('Expires','0');
-  res.json({rides:r.rows})
+  res.json({rides:safeRides})
 }));
 app.get('/api/rides/available',auth,asyncRoute(async(req,res)=>{
   if(req.user.role!=='driver')return res.status(403).json({error:'Somente motoristas.'});
@@ -100,6 +102,7 @@ app.get('/api/rides/available',auth,asyncRoute(async(req,res)=>{
   // Não usa r.* nem origin_lat/origin_lng: somente campos essenciais e estáveis.
   const r=await q(`SELECT r.id,r.passenger_id,r.origin,r.destination,r.distance_km,r.price,
       r.women_only,r.status,r.created_at,p.name AS passenger_name,p.profile_photo_path AS passenger_photo,
+      (SELECT value::numeric FROM app_settings WHERE key='ride_commission_percent' LIMIT 1) AS commission_percent,
       EXTRACT(EPOCH FROM (NOW()-r.created_at))/60 AS age_minutes
     FROM rides r JOIN users p ON p.id=r.passenger_id
     WHERE r.status='searching' AND r.driver_id IS NULL AND r.passenger_id<>$1
