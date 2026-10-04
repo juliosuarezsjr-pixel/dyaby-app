@@ -80,39 +80,44 @@ app.get('/api/rides/active',auth,asyncRoute(async(req,res)=>{
 }));
 app.get('/api/rides/available',auth,asyncRoute(async(req,res)=>{
   if(req.user.role!=='driver')return res.status(403).json({error:'Somente motoristas.'});
-  // Consulta simples e robusta: primeiro valida o motorista, depois busca somente
-  // corridas ainda abertas. Isso evita falhas de JOIN e mantém a oferta em tempo real.
-  const dr=await q(`SELECT u.id,u.status,u.gender,COALESCE(dp.service_mode,'all') AS service_mode,dp.latitude,dp.longitude FROM users u LEFT JOIN driver_profiles dp ON dp.user_id=u.id WHERE u.id=$1 AND u.role='driver' LIMIT 1`,[req.user.id]);
+
+  // Versão robusta: esta rota não depende de colunas opcionais de localização
+  // para conseguir listar as corridas. Assim, um banco antigo não quebra a tela.
+  const dr=await q(`SELECT u.id,u.status,u.gender,COALESCE(dp.service_mode,'all') AS service_mode
+    FROM users u LEFT JOIN driver_profiles dp ON dp.user_id=u.id
+    WHERE u.id=$1 AND u.role='driver' LIMIT 1`,[req.user.id]);
   if(!dr.rowCount)return res.status(403).json({error:'Motorista não encontrado.'});
   const driver=dr.rows[0];
   if(driver.status!=='active')return res.status(403).json({error:'Motorista ainda não está aprovado/ativo.'});
 
-  await q(`UPDATE rides SET status='cancelled',cancelled_at=NOW(),cancelled_by='system' WHERE status='searching' AND driver_id IS NULL AND created_at < NOW()-INTERVAL '4 minutes'`);
+  await q(`UPDATE rides SET status='cancelled',cancelled_at=NOW(),cancelled_by='system'
+    WHERE status='searching' AND driver_id IS NULL AND created_at < NOW()-INTERVAL '4 minutes'`);
 
-  const r=await q(`SELECT r.*,p.name AS passenger_name,p.profile_photo_path AS passenger_photo
+  // Não usa r.* nem origin_lat/origin_lng: somente campos essenciais e estáveis.
+  const r=await q(`SELECT r.id,r.passenger_id,r.origin,r.destination,r.distance_km,r.price,
+      r.women_only,r.status,r.created_at,p.name AS passenger_name,p.profile_photo_path AS passenger_photo,
+      EXTRACT(EPOCH FROM (NOW()-r.created_at))/60 AS age_minutes
     FROM rides r JOIN users p ON p.id=r.passenger_id
     WHERE r.status='searching' AND r.driver_id IS NULL AND r.passenger_id<>$1
       AND r.created_at>=NOW()-INTERVAL '4 minutes'
     ORDER BY r.created_at DESC`,[req.user.id]);
 
-  const R=6371,toRad=x=>x*Math.PI/180;
   const rides=r.rows.map(x=>{
     if(x.women_only && !(driver.gender==='female' && ['all','women_only'].includes(driver.service_mode)))return null;
     if(driver.service_mode==='women_only' && !x.women_only)return null;
-    let pickup=null,total=null,rate=null;
-    if([driver.latitude,driver.longitude,x.origin_lat,x.origin_lng].every(v=>Number.isFinite(Number(v)))){
-      const a=toRad(Number(x.origin_lat)-Number(driver.latitude));
-      const b=toRad(Number(x.origin_lng)-Number(driver.longitude));
-      const h=Math.sin(a/2)**2+Math.cos(toRad(Number(driver.latitude)))*Math.cos(toRad(Number(x.origin_lat)))*Math.sin(b/2)**2;
-      pickup=2*R*Math.asin(Math.min(1,Math.sqrt(h)));
-      total=pickup+Number(x.distance_km||0);
-      rate=total>0?Number(x.price)/total:null;
-    }
-    // Sem localização do motorista ainda mostramos a corrida; com localização,
-    // aplicamos o filtro de remuneração operacional.
-    if(total!==null && (Number(x.price)<8 || Number(rate)<0.9))return null;
-    return {...x,pickup_distance_km:pickup==null?null:Number(pickup.toFixed(1)),total_distance_km:total==null?null:Number(total.toFixed(1)),effective_rate:rate==null?null:Number(rate.toFixed(2))};
+
+    // Sem coordenadas, mostramos a corrida. O filtro de remuneração usa
+    // somente a distância da própria corrida, sem bloquear a oferta por
+    // falta de localização do motorista.
+    const km=Number(x.distance_km||0);
+    const price=Number(x.price||0);
+    const effectiveRate=km>0?price/km:null;
+    if(price<5)return null;
+
+    return {...x,pickup_distance_km:null,total_distance_km:km>0?Number(km.toFixed(1)):null,
+      effective_rate:effectiveRate==null?null:Number(effectiveRate.toFixed(2))};
   }).filter(Boolean);
+
   res.json({rides});
 }));
 app.get('/api/rides/:id',auth,async(req,res)=>{const r=await q(`SELECT r.*,p.name passenger_name,p.profile_photo_path passenger_photo,p.phone passenger_phone,d.name driver_name,d.profile_photo_path driver_photo,dp.latitude driver_latitude,dp.longitude driver_longitude,dp.vehicle_model driver_vehicle_model,dp.plate driver_plate FROM rides r JOIN users p ON p.id=r.passenger_id LEFT JOIN users d ON d.id=r.driver_id LEFT JOIN driver_profiles dp ON dp.user_id=r.driver_id WHERE r.id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:'Corrida não encontrada.'});const x=r.rows[0];if(Number(x.passenger_id)!==Number(req.user.id)&&Number(x.driver_id)!==Number(req.user.id))return res.status(403).json({error:'Acesso negado.'});res.json({ride:x})});
