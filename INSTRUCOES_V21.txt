@@ -1,0 +1,2 @@
+DYABY V21 — ABERTURA BASEADA EXATAMENTE NA REFERÊNCIA ENVIADA PELO USUÁRIO.
+A abertura usa os 5 quadros da imagem de referência como uma sequência em vídeo, com aproximação/movimento e depois logo + slogan. Nenhuma outra área do aplicativo foi alterada nesta etapa.
