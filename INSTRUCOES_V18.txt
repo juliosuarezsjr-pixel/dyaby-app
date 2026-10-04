@@ -1,0 +1,8 @@
+DYABY V18 — ABERTURA CINEMATOGRÁFICA
+
+Baseada na versão V17, sem remover server.js/package.json.
+A abertura usa um MP4 H.264 real servido pelo próprio app.
+Sequência: perrito distante na estrada → aproximação contínua → chega em primeiro plano → logo DYABY → slogan → app.
+Sem botão Pular.
+
+Subir TODOS os arquivos desta pasta para a branch main.
