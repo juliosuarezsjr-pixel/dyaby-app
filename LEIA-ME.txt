@@ -1,17 +1,7 @@
-DYABY - CORREÇÃO CORRIDA + PIX + DINHEIRO
+DYABY V22 — BASE ATUAL PRESERVADA
 
-Arquivos:
-1. server_CORRIGIDO_PIX_DINHEIRO.js
-   - adiciona payment_method na tabela rides
-   - aceita Pix ou Dinheiro ao criar uma corrida
-   - mantém compatibilidade: se não enviar paymentMethod, usa Pix
+Esta versão parte da V20, não da versão visual antiga/V21.
+Objetivo desta entrega: preservar as funções atuais já construídas e evitar substituir o projeto por uma versão antiga.
 
-2. DYABY_cliente_CORRIGIDO_PIX_DINHEIRO.html
-   - versão cliente preparada para solicitar corrida
-   - mostra Pix e Dinheiro como formas de pagamento
-
-IMPORTANTE:
-- Faça backup do server.js atual antes de substituir.
-- Substitua o server.js do servidor pelo server_CORRIGIDO_PIX_DINHEIRO.js.
-- Se o deploy usa o nome server.js, renomeie o arquivo corrigido para server.js.
-- O banco cria a coluna payment_method automaticamente na inicialização.
+Arquivos: index.html, server.js, package.json.
+Subir os 3 juntos para a branch main.
