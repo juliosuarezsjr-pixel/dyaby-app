@@ -400,11 +400,18 @@ function renderTripCard(){
 async function refreshPassengerRide(){
   if(!currentRide)return false;
   try{
-    const d=await api('/rides/active');
-    const found=(d.rides||[]).find(r=>Number(r.id)===Number(currentRide.id));
-    if(found){currentRide=found;renderTripCard();return true;}
+    const d=await api('/rides/'+currentRide.id);
+    if(d?.ride){currentRide=d.ride;renderTripCard();return true;}
     return false;
-  }catch{return false}
+  }catch{
+    // Fallback para sessões antigas ou corrida já encerrada.
+    try{
+      const d=await api('/rides/active');
+      const found=(d.rides||[]).find(r=>Number(r.id)===Number(currentRide.id));
+      if(found){currentRide=found;renderTripCard();return true;}
+    }catch{}
+    return false;
+  }
 }
 async function recoverPassengerRide(destination,distance){
   for(let i=0;i<6;i++){
@@ -423,7 +430,7 @@ function startPassengerRidePolling(){
   window._passengerRideTimer=setInterval(async()=>{
     if(!currentRide||!['searching','accepted','arrived','started'].includes(String(currentRide.status))){stopPassengerRidePolling();return;}
     await refreshPassengerRide();
-  },2500);
+  },1500);
 }
 function stopPassengerRidePolling(){if(window._passengerRideTimer){clearInterval(window._passengerRideTimer);window._passengerRideTimer=null}}
 async function renderTrip(){if(!currentRide)return;await refreshPassengerRide();if(currentRide)renderTripCard()}
