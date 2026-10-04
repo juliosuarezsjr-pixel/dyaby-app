@@ -134,6 +134,7 @@ app.get('/api/admin/settings',adminAuth,asyncRoute(async(req,res)=>{const r=awai
 app.put('/api/admin/settings',adminAuth,asyncRoute(async(req,res)=>{for(const [k,v] of Object.entries(req.body||{})){if(!['ride_commission_percent','ride_base_fee','ride_per_km','delivery_commission_percent','delivery_base_fee','delivery_per_km'].includes(k))continue;await q(`INSERT INTO app_settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`,[k,String(v)])}res.json({ok:true})}));
 app.get('/api/config/maps',(req,res)=>res.json({googleMapsApiKey:process.env.GOOGLE_MAPS_API_KEY||''}));
 app.use((err,req,res,next)=>{console.error('DYABY API error:',err&&err.stack?err.stack:err);if(res.headersSent)return next(err);res.status(500).json({error:'Erro interno no servidor DYABY.',detail:process.env.NODE_ENV==='production'?undefined:(err&&err.message)||'erro desconhecido'});});
+app.get('/dyaby_intro_real.mp4',(req,res)=>res.sendFile(path.join(__dirname,'dyaby_intro_real.mp4')));
 app.get('/admin',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 app.listen(PORT,()=>console.log(`DYABY rodando na porta ${PORT}`));
