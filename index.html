@@ -327,18 +327,32 @@ function setupCommerce(d){if(window._commerceOrderTimer)clearInterval(window._co
 function startHeartbeat(){if(window._hb)clearInterval(window._hb);window._hb=setInterval(()=>{if(token)fetch(API+'/me',{headers:{Authorization:'Bearer '+token}}).catch(()=>{})},60000)}
 function startDriverLocation(){if(driverTimer)clearInterval(driverTimer);updateDriverLocation();driverTimer=setInterval(updateDriverLocation,10000);if(window._rideAvailabilityTimer)clearInterval(window._rideAvailabilityTimer);window._rideAvailabilityTimer=setInterval(()=>{if(currentUser?.role==='driver'&&currentUser?.status==='active'){loadAvailable();syncDriverActive();}},2500);syncDriverActive()}function updateDriverLocation(){if(currentUser?.role!=='driver'||currentUser.status!=='active'||!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(p=>api('/driver/location',{method:'POST',body:JSON.stringify({latitude:p.coords.latitude,longitude:p.coords.longitude})}).catch(()=>{}),()=>{},{enableHighAccuracy:true,maximumAge:10000,timeout:8000})}
 function initMap(){if(map){map.invalidateSize();return}map=L.map('map').setView([-18.5789,-46.518],13);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);locateMe()}
-function openRide(w){if(currentUser?.role!=='passenger'){show('login');$('loginMsg').textContent='Entre como Cliente para pedir uma corrida.';return}womenRide=w;$('womenNotice').style.display=w?'block':'none';$('rideDestination').value=$('homeDestination').value||'';$('rideMsg').textContent='';$('mapMsg').textContent='';destinationCoords=null;show('ride');setTimeout(()=>{initMap();if($('rideDestination').value.trim())findDestination()},180)}
+function openRide(w){womenRide=w;$('womenNotice').style.display=w?'block':'none';$('rideDestination').value=$('homeDestination').value||'';$('rideMsg').textContent='';$('mapMsg').textContent='';destinationCoords=null;show('ride');setTimeout(()=>{initMap();if($('rideDestination').value.trim())findDestination()},180)}
 function setMapMode(m){['road','satellite','dark','traffic'].forEach(x=>$('m'+x[0].toUpperCase()+x.slice(1))?.classList.toggle('active',x===m));if(!map)return;if(m==='satellite'){if(window._sat){map.removeLayer(window._sat)}window._sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19}).addTo(map)}else if(m==='dark'){if(window._dark){map.removeLayer(window._dark)}window._dark=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:20}).addTo(map)}else if(m==='road'){if(window._sat)map.removeLayer(window._sat);if(window._dark)map.removeLayer(window._dark)}else $('mapMsg').textContent='Trânsito real será ativado quando o Google Maps estiver configurado.'}
 function locateMe(){if(!navigator.geolocation){$('mapMsg').textContent='Localização não disponível.';return}navigator.geolocation.getCurrentPosition(p=>{originCoords=[p.coords.latitude,p.coords.longitude];if(!map)initMap();if(originMarker)originMarker.setLatLng(originCoords);else originMarker=L.marker(originCoords).addTo(map).bindPopup('Você');map.setView(originCoords,15);$('mapMsg').textContent='Localização encontrada.';if(destinationCoords)drawRoute()},()=>{$('mapMsg').textContent='Permita a localização no navegador.'},{enableHighAccuracy:true,timeout:10000,maximumAge:30000})}
 async function findDestination(){const t=$('rideDestination').value.trim();if(!t)return;$('mapMsg').textContent='Buscando destino...';try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q='+encodeURIComponent(t));const d=await r.json();if(!d.length)throw 0;destinationCoords=[Number(d[0].lat),Number(d[0].lon)];if(destinationMarker)destinationMarker.setLatLng(destinationCoords);else destinationMarker=L.marker(destinationCoords).addTo(map).bindPopup('Destino');map.setView(destinationCoords,14);await drawRoute()}catch{$('mapMsg').textContent='Destino não encontrado.'}}
 async function drawRoute(){if(!originCoords||!destinationCoords)return;try{const u='https://router.project-osrm.org/route/v1/driving/'+originCoords[1]+','+originCoords[0]+';'+destinationCoords[1]+','+destinationCoords[0]+'?overview=full&alternatives=true&geometries=geojson';const d=await fetch(u).then(r=>r.json());const rt=d.routes?.[0];if(!rt)throw 0;if(routeLayer)routeLayer.remove();routeLayer=L.geoJSON(rt.geometry,{style:{weight:7}}).addTo(map);map.fitBounds(routeLayer.getBounds(),{padding:[20,20]});const km=rt.distance/1000,mins=Math.max(1,Math.round(rt.duration/60)),fare=km<=1?5:Math.max(0,Math.round(km*100)/100);$('distanceValue').textContent=km.toFixed(1).replace('.',',')+' km';$('timeValue').textContent=mins+' min';$('fareValue').textContent='R$ '+fare.toFixed(2).replace('.',',');$('ridePrice').innerHTML='<option value="'+fare+'">Moto — R$ '+fare.toFixed(2).replace('.',',')+'</option>';$('routeInfo').style.display='grid';$('mapMsg').textContent='Rota calculada. Até 1 km: R$ 5,00. Acima de 1 km: cálculo por distância.'}catch{$('mapMsg').textContent='Não foi possível calcular a rota.'}}
 async function requestRide(){
+  if(currentUser?.role!=='passenger'){
+    show('login');
+    $('loginMsg').textContent='Entre como Cliente para pedir uma corrida.';
+    return;
+  }
   const destination=$('rideDestination').value.trim();
-  const distance=parseFloat(($('distanceValue').textContent||'0').replace(',','.'));
   if(!destination){$('rideMsg').textContent='Informe o destino.';return;}
-  if(!Number.isFinite(distance)||distance<=0){$('rideMsg').textContent='Toque em “Buscar destino no mapa” para calcular a rota.';return;}
+  let distance=parseFloat(($('distanceValue').textContent||'0').replace(',','.'));
+  // O botão funciona mesmo sem o usuário tocar antes em “Buscar destino no mapa”:
+  // tenta calcular a rota automaticamente antes de criar a corrida.
+  if(!Number.isFinite(distance)||distance<=0){
+    $('rideMsg').textContent='📍 Calculando a rota...';
+    try{
+      await findDestination();
+      distance=parseFloat(($('distanceValue').textContent||'0').replace(',','.'));
+    }catch(_){ }
+  }
+  if(!Number.isFinite(distance)||distance<=0){$('rideMsg').textContent='Não consegui calcular a distância. Permita sua localização e tente novamente.';return;}
   $('rideMsg').textContent='🐶 Procurando motorista...';
-  const payload={destination,distanceKm:Number(distance.toFixed(2)),womenOnly:womenRide,origin:'Minha localização'};
+  const payload={destination,distanceKm:Number(distance.toFixed(2)),womenOnly:womenRide,origin:originCoords?('Minha localização'): 'Minha localização'};
   try{
     const d=await api('/rides',{method:'POST',body:JSON.stringify(payload)});
     currentRide=d.ride;
