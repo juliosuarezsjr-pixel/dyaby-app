@@ -1,0 +1,6 @@
+DYABY V20 — SEM A ANIMAÇÃO DE ABERTURA
+
+Removida a animação de abertura/video que estava ficando feia.
+O aplicativo abre diretamente na tela principal do DYABY.
+Mantidos o fluxo de corrida da V19 e os demais arquivos.
+Subir juntos: index.html, server.js e package.json.
