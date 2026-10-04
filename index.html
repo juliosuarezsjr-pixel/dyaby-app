@@ -227,7 +227,7 @@ async function login(){try{const d=await api('/auth/login',{method:'POST',body:J
 async function verifyOtp(){try{const d=await api('/auth/verify-whatsapp',{method:'POST',body:JSON.stringify({code:$('otpCode').value})});if(d.ok){$('otpMsg').textContent='WhatsApp verificado.';await loadMe()}}catch(e){$('otpMsg').textContent=e.message}}
 async function resendOtp(){try{const d=await api('/auth/resend-otp',{method:'POST',body:'{}'});$('otpMsg').textContent=d.devCode?'Código de teste: '+d.devCode:'Novo código enviado.'}catch(e){$('otpMsg').textContent=e.message}}
 function openClientProgress(){if(currentUser?.role!=='passenger')return;if(currentRide){show('trip');renderTripCard();return}show('clientProgress');$('clientProgressBody').innerHTML='';$('clientProgressEmpty').style.display='block';api('/rides/active').then(a=>{const found=(a.rides||[]).find(r=>['searching','accepted','arrived','started'].includes(String(r.status)));if(found){currentRide=found;$('clientProgressEmpty').style.display='none';$('clientProgressBody').innerHTML='<div class="card"><div class="status ok">● Corrida ativa</div><h2>Seu motorista está a caminho</h2><p class="muted">Abra o acompanhamento para ver mapa, motorista e status.</p><button class="btn primary" onclick="show(\'trip\');renderTripCard();startPassengerRidePolling();startRadar()">Acompanhar corrida</button></div>'}}).catch(()=>{});}function openClientFood(){if(currentUser?.role!=='passenger')return;loadCatalog('food');}function showWallet(){if(currentUser?.role==='passenger')show('clientWallet');}function showWalletMessage(msg){$('walletMsg').textContent=msg;}
-async function loadMe(){if(!token){show('welcome');return}try{const d=await api('/me');currentUser=d.user;$('helloName').textContent=(currentUser.name||'Cliente')+' 👋';$('profileName').textContent=currentUser.name||'';$('profileRole').textContent=currentUser.role==='passenger'?'Cliente':currentUser.role==='driver'?'Motorista / Entregador':'Comércio';$('profileAddress').value=currentUser.address||'';if(currentUser.role==='passenger'){show('home');$('passengerProfileServices').style.display='block';try{const a=await api('/rides/active');const found=(a.rides||[]).find(r=>['searching','accepted','arrived','started'].includes(String(r.status)));if(found){currentRide=found;show('trip');renderTripCard();startPassengerRidePolling();startRadar()}}catch(_){}}else if(currentUser.role==='driver'){show('driver');setupDriver(d)}else{show('commerce');setupCommerce(d)}startHeartbeat()}catch(e){localStorage.removeItem('dyaby_token');token=null;show('login')}}
+async function loadMe(){if(!token){show('welcome');return}try{const d=await api('/me');currentUser=d.user;$('helloName').textContent=(currentUser.name||'Cliente')+' 👋';$('profileName').textContent=currentUser.name||'';$('profileRole').textContent=currentUser.role==='passenger'?'Cliente':currentUser.role==='driver'?'Motorista / Entregador':'Comércio';$('profileAddress').value=currentUser.address||'';if(currentUser.role==='passenger'){show('home');$('passengerProfileServices').style.display='block';try{const a=await api('/rides/active');const found=(a.rides||[]).find(r=>['searching','accepted','arrived','started'].includes(String(r.status)));if(found){currentRide=found;localStorage.setItem('dyaby_current_ride_id',String(found.id));show('trip');renderTripCard();startPassengerRidePolling();startRadar()}else{const saved=localStorage.getItem('dyaby_current_ride_id');if(saved){try{const one=await api('/rides/'+encodeURIComponent(saved));if(one.ride&&['searching','accepted','arrived','started'].includes(String(one.ride.status))){currentRide=one.ride;show('trip');renderTripCard();startPassengerRidePolling();startRadar()}}catch{}}}}catch(_){}}else if(currentUser.role==='driver'){show('driver');setupDriver(d)}else{show('commerce');setupCommerce(d)}startHeartbeat()}catch(e){localStorage.removeItem('dyaby_token');token=null;show('login')}}
 function showHomeByRole(){if(currentUser?.role==='passenger')show('home');else if(currentUser?.role==='driver')show('driver');else show('commerce')}function showProfileByRole(){if(currentUser?.role==='passenger')show('profile');else if(currentUser?.role==='driver'){show('driver');driverTab('profile')}else show('commerce')}
 function goBackHome(){showHomeByRole()}
 function setupDriver(d){$('driverName').textContent=currentUser.name;$('driverStatus').textContent=currentUser.status==='active'?'Cadastro aprovado.':'Cadastro pendente.';$('driverPending').style.display=currentUser.status==='active'?'none':'block';$('driverApproved').style.display=currentUser.status==='active'?'block':'none';if(d.driver)$('serviceMode').value=d.driver.service_mode||'all';if(currentUser.status==='active'){loadAvailable();loadAvailableDeliveries();startDriverLocation()}}
@@ -235,7 +235,7 @@ function setupCommerce(d){$('commerceName').textContent=d.commerce?.trade_name||
 function startHeartbeat(){if(window._hb)clearInterval(window._hb);window._hb=setInterval(()=>{if(token)fetch(API+'/me',{headers:{Authorization:'Bearer '+token}}).catch(()=>{})},60000)}
 function startDriverLocation(){if(driverTimer)clearInterval(driverTimer);updateDriverLocation();driverTimer=setInterval(updateDriverLocation,10000);if(window._rideAvailabilityTimer)clearInterval(window._rideAvailabilityTimer);window._rideAvailabilityTimer=setInterval(()=>{if(currentUser?.role==='driver'&&currentUser?.status==='active'){loadAvailable();syncDriverActive();}},2500);syncDriverActive()}function updateDriverLocation(){if(currentUser?.role!=='driver'||currentUser.status!=='active'||!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(p=>api('/driver/location',{method:'POST',body:JSON.stringify({latitude:p.coords.latitude,longitude:p.coords.longitude})}).catch(()=>{}),()=>{},{enableHighAccuracy:true,maximumAge:10000,timeout:8000})}
 function initMap(){if(map){map.invalidateSize();return}map=L.map('map').setView([-18.5789,-46.518],13);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);locateMe()}
-function openRide(w){womenRide=!!w;if(!currentUser){selectedLoginRole='passenger';chooseLoginRole('passenger');show('login');$('loginMsg').textContent='Entre como Cliente para pedir uma corrida.';return}if(currentUser.role!=='passenger'){alert('Somente clientes podem pedir corrida.');return}if($('womenNotice'))$('womenNotice').style.display=w?'block':'none';if($('rideDestination'))$('rideDestination').value=$('homeDestination')?.value||'';show('ride');setTimeout(()=>{try{initMap()}catch(e){}},150)}
+function openRide(w){if(currentUser?.role!=='passenger'){alert('Somente clientes podem pedir corrida.');return}womenRide=w;$('womenNotice').style.display=w?'block':'none';$('rideDestination').value=$('homeDestination').value||'';show('ride');setTimeout(initMap,150)}
 function setMapMode(m){['road','satellite','dark','traffic'].forEach(x=>$('m'+x[0].toUpperCase()+x.slice(1))?.classList.toggle('active',x===m));if(!map)return;if(m==='satellite'){if(window._sat){map.removeLayer(window._sat)}window._sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19}).addTo(map)}else if(m==='dark'){if(window._dark){map.removeLayer(window._dark)}window._dark=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:20}).addTo(map)}else if(m==='road'){if(window._sat)map.removeLayer(window._sat);if(window._dark)map.removeLayer(window._dark)}else $('mapMsg').textContent='Trânsito real será ativado quando o Google Maps estiver configurado.'}
 function locateMe(){if(!navigator.geolocation){$('mapMsg').textContent='Localização não disponível.';return}navigator.geolocation.getCurrentPosition(p=>{originCoords=[p.coords.latitude,p.coords.longitude];if(!map)initMap();if(originMarker)originMarker.setLatLng(originCoords);else originMarker=L.marker(originCoords).addTo(map).bindPopup('Você');map.setView(originCoords,15);$('mapMsg').textContent='Localização encontrada.';if(destinationCoords)drawRoute()},()=>{$('mapMsg').textContent='Permita a localização no navegador.'},{enableHighAccuracy:true,timeout:10000,maximumAge:30000})}
 async function findDestination(){const t=$('rideDestination').value.trim();if(!t)return;$('mapMsg').textContent='Buscando destino...';try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q='+encodeURIComponent(t));const d=await r.json();if(!d.length)throw 0;destinationCoords=[Number(d[0].lat),Number(d[0].lon)];if(destinationMarker)destinationMarker.setLatLng(destinationCoords);else destinationMarker=L.marker(destinationCoords).addTo(map).bindPopup('Destino');map.setView(destinationCoords,14);await drawRoute()}catch{$('mapMsg').textContent='Destino não encontrado.'}}
@@ -249,6 +249,7 @@ async function requestRide(){
   try{
     const d=await api('/rides',{method:'POST',body:JSON.stringify(payload)});
     currentRide=d.ride;
+    localStorage.setItem('dyaby_current_ride_id', String(currentRide.id));
     $('rideMsg').textContent='';
     show('trip');
     renderTripCard();
@@ -277,16 +278,33 @@ function renderTripCard(){
   if($('cancelRideBtn'))$('cancelRideBtn').style.display=['finished','cancelled'].includes(status)?'none':'block';
   $('tripCard').innerHTML='<div style="padding:13px 14px;border-radius:12px;background:'+st[2]+';color:#fff;font-weight:800;text-align:center">'+st[0]+'</div><p class="small" style="text-align:center;margin:10px 0">'+st[1]+'</p><h2>📍 '+esc(currentRide.destination||'')+'</h2><p>📏 '+Number(currentRide.distance_km||0).toFixed(1)+' km</p><p class="price">Valor: R$ '+Number(currentRide.price||0).toFixed(2).replace('.',',')+'</p>'+(currentRide.driver_name?'<div style="display:flex;gap:10px;align-items:center;margin-top:12px">'+(currentRide.driver_photo?'<img src="'+esc(currentRide.driver_photo)+'" style="width:56px;height:56px;border-radius:50%;object-fit:cover">':'<div style="font-size:40px">🏍️</div>')+'<div><b>'+esc(currentRide.driver_name)+'</b><div class="small">Motorista</div></div></div>':'<p class="muted">Procurando motorista...</p>');
   if(currentRide.driver_name)stopRadar();
-  if(['finished','cancelled'].includes(status))stopPassengerRidePolling();
+  if(['finished','cancelled'].includes(status)){stopPassengerRidePolling(); localStorage.removeItem('dyaby_current_ride_id');}
 }
 async function refreshPassengerRide(){
   if(!currentRide)return false;
   try{
     const d=await api('/rides/active');
     const found=(d.rides||[]).find(r=>Number(r.id)===Number(currentRide.id));
-    if(found){currentRide=found;renderTripCard();return true;}
-    return false;
-  }catch{return false}
+    if(found){
+      currentRide=found;
+      localStorage.setItem('dyaby_current_ride_id', String(currentRide.id));
+      renderTripCard();
+      return true;
+    }
+  }catch{}
+  // Fallback: consulta a corrida diretamente. Isso garante que a tela do cliente
+  // veja imediatamente quando o motorista aceitar a corrida, mesmo se /active
+  // tiver sido cacheado ou a página estiver em uma aba antiga.
+  try{
+    const d=await api('/rides/'+encodeURIComponent(currentRide.id));
+    if(d.ride){
+      currentRide=d.ride;
+      localStorage.setItem('dyaby_current_ride_id', String(currentRide.id));
+      renderTripCard();
+      return true;
+    }
+  }catch{}
+  return false;
 }
 async function recoverPassengerRide(destination,distance){
   for(let i=0;i<6;i++){
