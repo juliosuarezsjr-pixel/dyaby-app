@@ -398,20 +398,30 @@ function renderTripCard(){
   if(['finished','cancelled'].includes(status))stopPassengerRidePolling();
 }
 async function refreshPassengerRide(){
-  if(!currentRide)return false;
+  if(!currentRide?.id)return false;
+  const rideId=Number(currentRide.id);
+  // Consulta direta primeiro e, sempre, confirma pela lista ativa. Isso evita
+  // que uma resposta atrasada deixe o cliente preso em “Procurando motorista”.
   try{
-    const d=await api('/rides/'+currentRide.id);
-    if(d?.ride){currentRide=d.ride;renderTripCard();return true;}
-    return false;
-  }catch{
-    // Fallback para sessões antigas ou corrida já encerrada.
-    try{
-      const d=await api('/rides/active');
-      const found=(d.rides||[]).find(r=>Number(r.id)===Number(currentRide.id));
-      if(found){currentRide=found;renderTripCard();return true;}
-    }catch{}
-    return false;
-  }
+    const d=await api('/rides/'+rideId);
+    if(d?.ride && Number(d.ride.id)===rideId){
+      currentRide=d.ride;
+      renderTripCard();
+      if(['accepted','arrived','started'].includes(String(currentRide.status))) stopRadar();
+      return true;
+    }
+  }catch{}
+  try{
+    const d=await api('/rides/active');
+    const found=(d.rides||[]).find(r=>Number(r.id)===rideId);
+    if(found){
+      currentRide=found;
+      renderTripCard();
+      if(['accepted','arrived','started'].includes(String(currentRide.status))) stopRadar();
+      return true;
+    }
+  }catch{}
+  return false;
 }
 async function recoverPassengerRide(destination,distance){
   for(let i=0;i<6;i++){
@@ -427,10 +437,14 @@ async function recoverPassengerRide(destination,distance){
 }
 function startPassengerRidePolling(){
   if(window._passengerRideTimer)clearInterval(window._passengerRideTimer);
+  refreshPassengerRide();
   window._passengerRideTimer=setInterval(async()=>{
-    if(!currentRide||!['searching','accepted','arrived','started'].includes(String(currentRide.status))){stopPassengerRidePolling();return;}
-    await refreshPassengerRide();
-  },1500);
+    if(!currentRide?.id){stopPassengerRidePolling();return;}
+    const ok=await refreshPassengerRide();
+    // Se a corrida mudou de estado no servidor, não paramos o polling antes
+    // de renderizar a mudança no cliente.
+    if(ok && ['finished','cancelled'].includes(String(currentRide.status))) stopPassengerRidePolling();
+  },1000);
 }
 function stopPassengerRidePolling(){if(window._passengerRideTimer){clearInterval(window._passengerRideTimer);window._passengerRideTimer=null}}
 async function renderTrip(){if(!currentRide)return;await refreshPassengerRide();if(currentRide)renderTripCard()}
