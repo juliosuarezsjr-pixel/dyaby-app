@@ -1,0 +1,22 @@
+DYABY V12 — ANIMAÇÕES + IDENTIDADE DA MASCOTE
+
+Base: versão atual enviada pelo usuário (index.html/server.js/package.json).
+
+Incluído:
+- Abertura DYABY com mascote chegando de moto, logo e slogan, sem botão Pular.
+- Transição animada ao selecionar: Corrida, Entrega, Comida, Bolos e doces, Só mulheres e Comércio.
+- Mesma mascote DYABY como personagem central.
+- Perfil de motorista/entregador recebe visual animado conforme o tipo da solicitação.
+- Corrida: perrito motociclista.
+- Entrega: perrito entregador.
+- Comida: perrito chef/comida.
+- Bolos: perrito confeiteiro.
+- Comércio: identidade de parceiro.
+- Comércio mostra o perrito quando um pedido de comida chega e controla o momento de chamar o entregador.
+- Chamada do entregador continua condicionada ao tempo de preparo definido pelo pedido; o backend atual exige que faltem aproximadamente 5 minutos.
+- Propósito DYABY inserido na home.
+
+Importante:
+- Não remover server.js nem package.json.
+- O index.html mantém as imagens embutidas para evitar erro de assets no Render.
+- Esta versão não significa que o GitHub/Render foi atualizado automaticamente.
