@@ -1,0 +1,30 @@
+DYABY V14 — ANIMAÇÕES REAIS + FLUXOS DE SERVIÇO
+
+Base: V13.
+
+ENTRAR NA APLICAÇÃO:
+- Abertura com o mascote vindo de longe, acelerando pela estrada até chegar à tela.
+- Não existe botão Pular.
+
+CATEGORIAS:
+- Moto: animação do mascote chegando -> abre Corrida.
+- Encomenda: animação do mascote com pacote -> abre Encomenda.
+- Comida: animação do mascote com comida -> abre catálogo.
+- Bolos e doces: animação do mascote com bolo -> abre catálogo.
+- Só mulheres: animação -> abre Corrida no modo mulheres.
+- Comércio: animação -> abre catálogo/parceiros.
+
+ENTREGADOR:
+- Nova corrida: animação automática de nova solicitação.
+- Nova encomenda: animação automática do mascote com pacote.
+- Novo pedido de comida/bolo: animação automática correspondente.
+
+COMÉRCIO:
+- Pedido mostra mascote animado com comida.
+- Tempo de preparo continua controlando o botão “Chamar entregador”.
+- Entregador só é chamado quando faltam 5 minutos ou menos.
+
+IMPORTANTE:
+- Subir juntos index.html, server.js e package.json.
+- Não substituir server.js por versão antiga.
+- Render fará o deploy da branch main.
