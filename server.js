@@ -120,6 +120,16 @@ app.get('/api/rides/available',auth,asyncRoute(async(req,res)=>{
 
   res.json({rides});
 }));
+app.get('/api/rides/:id/status',auth,asyncRoute(async(req,res)=>{
+  const r=await q(`SELECT r.id,r.passenger_id,r.driver_id,r.status,r.accepted_at,r.arrived_at,r.started_at,r.finished_at,r.cancelled_at,r.cancelled_by,r.payment_method,r.price,d.name driver_name,d.profile_photo_path driver_photo FROM rides r LEFT JOIN users d ON d.id=r.driver_id WHERE r.id=$1`,[req.params.id]);
+  if(!r.rowCount)return res.status(404).json({error:'Corrida não encontrada.'});
+  const x=r.rows[0],uid=Number(req.user.id);
+  if(Number(x.passenger_id)!==uid && Number(x.driver_id||-1)!==uid)return res.status(403).json({error:'Acesso negado.'});
+  res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma','no-cache');
+  res.set('Expires','0');
+  res.json({ride:x});
+}));
 app.get('/api/rides/:id',auth,async(req,res)=>{const r=await q(`SELECT r.*,p.name passenger_name,p.profile_photo_path passenger_photo,p.phone passenger_phone,d.name driver_name,d.profile_photo_path driver_photo,dp.latitude driver_latitude,dp.longitude driver_longitude,dp.vehicle_model driver_vehicle_model,dp.plate driver_plate FROM rides r JOIN users p ON p.id=r.passenger_id LEFT JOIN users d ON d.id=r.driver_id LEFT JOIN driver_profiles dp ON dp.user_id=r.driver_id WHERE r.id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:'Corrida não encontrada.'});const x=r.rows[0];if(Number(x.passenger_id)!==Number(req.user.id)&&Number(x.driver_id)!==Number(req.user.id))return res.status(403).json({error:'Acesso negado.'});res.json({ride:x})});
 app.post('/api/rides/:id/accept',auth,async(req,res)=>{if(req.user.role!=='driver')return res.status(403).json({error:'Somente motoristas.'});const r=await q(`UPDATE rides r SET driver_id=$1,status='accepted',accepted_at=NOW() FROM users d LEFT JOIN driver_profiles dp ON dp.user_id=d.id WHERE r.id=$2 AND r.status='searching' AND r.driver_id IS NULL AND d.id=$1 AND d.status='active' AND (r.women_only=FALSE OR (d.gender='female' AND COALESCE(dp.service_mode,'all') IN ('all','women_only'))) AND (COALESCE(dp.service_mode,'all')='all' OR (COALESCE(dp.service_mode,'all')='women_only' AND r.women_only=TRUE)) RETURNING r.*`,[req.user.id,req.params.id]);if(!r.rowCount)return res.status(409).json({error:'Corrida indisponível.'});res.json({ride:r.rows[0]})});
 for(const [path,status,nextStatus,field] of [['arrive','accepted','arrived','arrived_at'],['start','accepted|arrived','started','started_at'],['finish','started','finished','finished_at']]){app.post('/api/rides/:id/'+path,auth,async(req,res)=>{const allowed=status.split('|');const r=await q(`UPDATE rides SET status=$1,${field}=NOW() WHERE id=$2 AND driver_id=$3 AND status=ANY($4::text[]) RETURNING *`,[nextStatus,req.params.id,req.user.id,allowed]);if(!r.rowCount)return res.status(409).json({error:'Ação inválida.'});if(nextStatus==='finished'){const pct=await setting('ride_commission_percent',5);const fee=Number(r.rows[0].price)*pct/100;await q('UPDATE rides SET platform_fee=$1,driver_payout=$2 WHERE id=$3',[fee,Number(r.rows[0].price)-fee,r.rows[0].id]);r.rows[0].platform_fee=fee;r.rows[0].driver_payout=Number(r.rows[0].price)-fee}res.json({ride:r.rows[0]})})}
@@ -159,8 +169,9 @@ app.get('/api/admin/settings',adminAuth,asyncRoute(async(req,res)=>{const r=awai
 app.put('/api/admin/settings',adminAuth,asyncRoute(async(req,res)=>{for(const [k,v] of Object.entries(req.body||{})){if(!['ride_commission_percent','ride_base_fee','ride_per_km','delivery_commission_percent','delivery_base_fee','delivery_per_km'].includes(k))continue;await q(`INSERT INTO app_settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`,[k,String(v)])}res.json({ok:true})}));
 app.get('/api/config/maps',(req,res)=>res.json({googleMapsApiKey:process.env.GOOGLE_MAPS_API_KEY||''}));
 app.use((err,req,res,next)=>{console.error('DYABY API error:',err&&err.stack?err.stack:err);if(res.headersSent)return next(err);res.status(500).json({error:'Erro interno no servidor DYABY.',detail:process.env.NODE_ENV==='production'?undefined:(err&&err.message)||'erro desconhecido'});});
-app.get('/admin',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
-app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
+app.use('/api', (req,res,next)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');res.set('Pragma','no-cache');res.set('Expires','0');next()});
+app.get('/admin',(req,res)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');res.sendFile(path.join(__dirname,'index.html'))});
+app.get('*',(req,res)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');res.sendFile(path.join(__dirname,'index.html'))});
 initDatabase().then(()=>{
   console.log('DYABY banco inicializado.');
   app.listen(PORT,()=>console.log(`DYABY rodando na porta ${PORT}`));
