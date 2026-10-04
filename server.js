@@ -127,5 +127,10 @@ app.get('/api/config/maps',(req,res)=>res.json({googleMapsApiKey:process.env.GOO
 app.use((err,req,res,next)=>{console.error('DYABY API error:',err&&err.stack?err.stack:err);if(res.headersSent)return next(err);res.status(500).json({error:'Erro interno no servidor DYABY.',detail:process.env.NODE_ENV==='production'?undefined:(err&&err.message)||'erro desconhecido'});});
 app.get('/admin',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
-app.listen(PORT,()=>console.log(`DYABY rodando na porta ${PORT}`));
-initDatabase().then(()=>console.log('DYABY banco inicializado.')).catch(e=>console.error('DYABY falha na inicialização do banco:',e&&e.stack?e.stack:e));;
+initDatabase().then(()=>{
+  console.log('DYABY banco inicializado.');
+  app.listen(PORT,()=>console.log(`DYABY rodando na porta ${PORT}`));
+}).catch(e=>{
+  console.error('DYABY falha na inicialização do banco:',e&&e.stack?e.stack:e);
+  process.exit(1);
+});;
