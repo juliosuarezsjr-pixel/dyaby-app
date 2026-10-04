@@ -1,11 +1,7 @@
-# DYABY — correção PostgreSQL
+# DYABY — base funcional consolidada
 
-Esta versão mantém o backend do cadastro e troca o banco principal de SQLite para PostgreSQL usando `DATABASE_URL`.
+Preserva a base funcional atual e não substitui o projeto por uma versão visual antiga.
 
-No Render, configure:
-- DATABASE_URL
-- ADMIN_EMAIL
-- ADMIN_PASSWORD
-- JWT_SECRET
+Inclui Cliente, Motorista/Entregador e Comércio; corridas; entregas; ganhos; perfil; suporte; PostgreSQL/Render; e acompanhamento de estados no cliente.
 
-A `DATABASE_URL` deve ser a Internal Database URL do PostgreSQL `dyaby-db`.
+Subir juntos: index.html, server.js e package.json.
