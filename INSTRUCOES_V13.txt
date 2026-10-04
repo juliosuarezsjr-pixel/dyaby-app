@@ -1,0 +1,14 @@
+DYABY V13 — MASCOTE + ANIMAÇÕES + TEMPO
+Base: V10 enviado pelo usuário.
+
+- Mascote oficial DYABY na abertura e nas solicitações.
+- Abertura cinematográfica sem botão Pular.
+- Manifesto DYABY na tela inicial.
+- Motorista/entregador recebe animação conforme o tipo: corrida, encomenda, comida, bolos/doces ou Só mulheres.
+- Comércio vê o pedido de comida com identidade do mascote.
+- Comércio escolhe o tempo de preparo ao aceitar.
+- “Chamar entregador” só libera quando faltam 5 minutos ou menos.
+- Atualização do comércio a cada 5 segundos.
+- Correção no backend para aceitar pedidos de comida depois que o comércio chama o entregador.
+
+Subir juntos: index.html, server.js e package.json.
