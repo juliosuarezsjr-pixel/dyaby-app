@@ -1,1 +1,0 @@
-V22 baseada diretamente na V20, preservando a funcionalidade existente. Correções: Em andamento do cliente, status da encomenda, motorista chegou à coleta e não substitui os perfis por uma versão antiga.
