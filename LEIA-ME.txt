@@ -1,7 +1,0 @@
-DYABY V22 — BASE ATUAL PRESERVADA
-
-Esta versão parte da V20, não da versão visual antiga/V21.
-Objetivo desta entrega: preservar as funções atuais já construídas e evitar substituir o projeto por uma versão antiga.
-
-Arquivos: index.html, server.js, package.json.
-Subir os 3 juntos para a branch main.
